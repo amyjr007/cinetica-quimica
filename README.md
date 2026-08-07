@@ -64,10 +64,12 @@ Os quizzes são data-driven em `QUIZZES.quiz1.itens`, com quatro tipos de intera
 ## Cenário
 
 A sala tem duas paredes. A do **fundo** carrega o quadro onde os gráficos são projetados.
-A **lateral esquerda** (`x = -7.4`) é um "slide de apresentação": fundo em degradê, faixas
-diagonais nos cantos, barra de acento no rodapé e, como marca d'água, a própria curva da
-energia de ativação com a rota do catalisador. Tudo tom sobre tom, a poucos por cento de
-luminância do fundo, para nunca competir com a bancada.
+A **lateral esquerda** (`x = -7.4`) é um mural no estilo "slide de apresentação": fundo em
+degradê, faixas diagonais nos cantos e barra de acento no rodapé. Como conteúdo, estruturas
+moleculares desenhadas (benzeno, água, CO₂, metano, amônia, O₂) e as equações do curso —
+`v = k·[A]ᵐ·[B]ⁿ`, `k = A·e^(−Ea/RT)`, `2 H₂O₂ → 2 H₂O + O₂`, `N₂ + 3H₂ ⇌ 2NH₃`,
+`CaCO₃ + 2HCl → …`, além de `MnO₂`, `V₂O₅`, `Ea` e `ΔH`. Tudo tom sobre tom, entre 3% e 7%
+de alfa, para nunca competir com a bancada.
 
 O enquadramento de referência dela é a constante `CAM_PAREDE`:
 

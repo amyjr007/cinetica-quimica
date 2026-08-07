@@ -705,7 +705,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.0.8</div>
+  <div id="versao">v1.0.9</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -763,7 +763,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.0.8';
+const VERSAO = 'v1.0.9';
 
 /* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
@@ -1489,54 +1489,144 @@ function texturaParedeSlide(){
   faixa([[0,1],[.34,1],[0,.62]],         'rgba(255,157,51,.04)');
   faixa([[0,1],[.18,1],[0,.81]],         'rgba(255,59,48,.05)');
 
-  /* 3) watermark: a curva do diagrama de energia, à esquerda do slide */
-  const bx = sx(.10), by = sy(.74), bw = SW*.52, bh = SH*.46;
-  const morro = (altura, cor, tracejada) => {
+  /* ---- ferramentas de desenho químico (tudo tom sobre tom) ---- */
+  const rgba = (r, g2, b, a) => 'rgba(' + r + ',' + g2 + ',' + b + ',' + a + ')';
+  const BRANCO = (a) => rgba(255, 255, 255, a);
+  const AMBAR  = (a) => rgba(255, 157, 51, a);
+  const AZUL   = (a) => rgba(111, 183, 255, a);
+  const ROXO   = (a) => rgba(200, 107, 255, a);
+
+  /* Fórmula/equação escrita. */
+  const formula = (txt, u, v, tam, alpha, cor) => {
     c.save();
-    c.strokeStyle = cor; c.lineWidth = 11; c.lineCap = 'round'; c.lineJoin = 'round';
-    if(tracejada) c.setLineDash([18, 15]);
-    c.beginPath();
-    c.moveTo(bx, by);
-    c.lineTo(bx + bw*.18, by);
-    c.bezierCurveTo(bx + bw*.34, by, bx + bw*.36, by - bh*altura,
-                    bx + bw*.50, by - bh*altura);
-    c.bezierCurveTo(bx + bw*.64, by - bh*altura, bx + bw*.62, by + bh*.18,
-                    bx + bw*.80, by + bh*.18);
-    c.lineTo(bx + bw, by + bh*.18);
-    c.stroke();
+    c.font = '600 ' + tam + 'px "Segoe UI", system-ui, Roboto, Arial, sans-serif';
+    c.fillStyle = (cor || BRANCO)(alpha);
+    c.textAlign = 'left'; c.textBaseline = 'middle';
+    c.fillText(txt, sx(u), sy(v));
     c.restore();
   };
-  morro(1,   'rgba(255,157,51,.070)',  false);   // sem catalisador
-  morro(.55, 'rgba(200,107,255,.055)', true);    // rota catalisada
-  /* eixos fantasma do gráfico */
-  c.strokeStyle = 'rgba(255,255,255,.035)'; c.lineWidth = 4;
-  c.beginPath();
-  c.moveTo(bx - 40, by - bh*1.25); c.lineTo(bx - 40, by + bh*.42);
-  c.lineTo(bx + bw + 40, by + bh*.42);
-  c.stroke();
 
-  /* 4) moléculas discretas (dois átomos ligados) */
-  const molecula = (x, y, r, ang, alpha) => {
-    const dx = Math.cos(ang) * r * 1.55, dy = Math.sin(ang) * r * 1.55;
-    c.strokeStyle = 'rgba(255,255,255,' + (alpha * .8) + ')';
-    c.lineWidth = Math.max(2, r * .22);
-    c.beginPath(); c.moveTo(x - dx, y - dy); c.lineTo(x + dx, y + dy); c.stroke();
-    c.fillStyle = 'rgba(255,255,255,' + alpha + ')';
-    c.beginPath(); c.arc(x - dx, y - dy, r, 0, 6.284); c.fill();
-    c.beginPath(); c.arc(x + dx, y + dy, r * .78, 0, 6.284); c.fill();
-  };
-  molecula(sx(.80), sy(.16), 30, -0.5, .032);
-  molecula(sx(.93), sy(.34), 19,  0.7, .026);
-  molecula(sx(.66), sy(.90), 24,  0.3, .026);
-  molecula(sx(.20), sy(.10), 17, -0.9, .022);
-  molecula(sx(.44), sy(.20), 13,  0.2, .020);
-
-  /* 5) bolhas dispersas (efervescência) */
-  for(let i = 0; i < 44; i++){
-    const x = sx(Math.random()), y = sy(Math.random()), r = 3 + Math.random()*9;
-    c.fillStyle = 'rgba(255,255,255,' + (0.010 + Math.random()*0.016).toFixed(3) + ')';
+  /* Átomo: círculo de contorno com o símbolo dentro, como num diagrama de
+     ligações. Preenchimento chapado deixaria o símbolo escuro sobre um
+     círculo quase transparente — some no fundo. */
+  const atomo = (x, y, r, alpha, rot) => {
+    c.fillStyle = BRANCO(alpha * .45);
     c.beginPath(); c.arc(x, y, r, 0, 6.284); c.fill();
-  }
+    c.strokeStyle = BRANCO(alpha * 1.7); c.lineWidth = Math.max(1.5, r * .13);
+    c.beginPath(); c.arc(x, y, r, 0, 6.284); c.stroke();
+    if(rot){
+      c.font = '700 ' + Math.round(r * 1.02) + 'px "Segoe UI", system-ui, sans-serif';
+      c.fillStyle = BRANCO(Math.min(.30, alpha * 2.4));
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(rot, x, y + 1);
+    }
+  };
+  /* Ligação simples ou dupla entre dois pontos. */
+  const ligacao = (x1, y1, x2, y2, alpha, dupla, esp) => {
+    c.strokeStyle = BRANCO(alpha); c.lineWidth = esp || 5; c.lineCap = 'round';
+    if(!dupla){
+      c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); return;
+    }
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+    const nx = -dy / L * (esp || 5) * .9, ny = dx / L * (esp || 5) * .9;
+    c.beginPath(); c.moveTo(x1+nx, y1+ny); c.lineTo(x2+nx, y2+ny); c.stroke();
+    c.beginPath(); c.moveTo(x1-nx, y1-ny); c.lineTo(x2-nx, y2-ny); c.stroke();
+  };
+
+  /* ---- 3) ESTRUTURAS MOLECULARES ---- */
+
+  /* Benzeno: hexágono com o círculo aromático. */
+  const benzeno = (u, v, r, alpha) => {
+    const x = sx(u), y = sy(v), p = [];
+    for(let i = 0; i < 6; i++){
+      const a = -Math.PI/2 + i * Math.PI/3;
+      p.push([x + Math.cos(a)*r, y + Math.sin(a)*r]);
+    }
+    c.strokeStyle = BRANCO(alpha); c.lineWidth = r*.10; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(p[0][0], p[0][1]);
+    for(let i = 1; i < 6; i++) c.lineTo(p[i][0], p[i][1]);
+    c.closePath(); c.stroke();
+    c.beginPath(); c.arc(x, y, r*.58, 0, 6.284); c.stroke();
+  };
+
+  /* Água: O central com dois H em ângulo (~105°). */
+  const agua = (u, v, r, alpha) => {
+    const x = sx(u), y = sy(v), d = r*2.05;
+    const a1 = -0.35, a2 = -Math.PI + 0.35;
+    const h1 = [x + Math.cos(a1)*d, y + Math.sin(a1)*d];
+    const h2 = [x + Math.cos(a2)*d, y + Math.sin(a2)*d];
+    ligacao(x, y, h1[0], h1[1], alpha*.85, false, r*.30);
+    ligacao(x, y, h2[0], h2[1], alpha*.85, false, r*.30);
+    atomo(x, y, r, alpha, 'O');
+    atomo(h1[0], h1[1], r*.62, alpha, 'H');
+    atomo(h2[0], h2[1], r*.62, alpha, 'H');
+  };
+
+  /* Gás carbônico: O=C=O linear com ligações duplas. */
+  const gasCarbonico = (u, v, r, alpha) => {
+    const x = sx(u), y = sy(v), d = r*2.25;
+    ligacao(x - d, y, x, y, alpha*.85, true, r*.20);
+    ligacao(x, y, x + d, y, alpha*.85, true, r*.20);
+    atomo(x - d, y, r*.85, alpha, 'O');
+    atomo(x + d, y, r*.85, alpha, 'O');
+    atomo(x, y, r, alpha, 'C');
+  };
+
+  /* Amônia: N com três H. */
+  const amonia = (u, v, r, alpha) => {
+    const x = sx(u), y = sy(v), d = r*2.05;
+    [-Math.PI/2, Math.PI/6, Math.PI - Math.PI/6].forEach((a)=>{
+      const hx = x + Math.cos(a)*d, hy = y + Math.sin(a)*d;
+      ligacao(x, y, hx, hy, alpha*.85, false, r*.28);
+      atomo(hx, hy, r*.60, alpha, 'H');
+    });
+    atomo(x, y, r, alpha, 'N');
+  };
+
+  /* Metano: C com quatro H. */
+  const metano = (u, v, r, alpha) => {
+    const x = sx(u), y = sy(v), d = r*2.0;
+    [-Math.PI/2, 0, Math.PI/2, Math.PI].forEach((a)=>{
+      const hx = x + Math.cos(a)*d, hy = y + Math.sin(a)*d;
+      ligacao(x, y, hx, hy, alpha*.8, false, r*.26);
+      atomo(hx, hy, r*.55, alpha, 'H');
+    });
+    atomo(x, y, r, alpha, 'C');
+  };
+
+  /* Gás oxigênio: O=O. */
+  const oxigenio = (u, v, r, alpha) => {
+    const x = sx(u), y = sy(v), d = r*1.35;
+    ligacao(x - d, y, x + d, y, alpha*.85, true, r*.22);
+    atomo(x - d, y, r, alpha, 'O');
+    atomo(x + d, y, r, alpha, 'O');
+  };
+
+  /* Distribuição em faixas horizontais, dimensionada para não haver
+     sobreposição entre equações vizinhas nem com as estruturas. */
+  gasCarbonico(.07, .10, 18, .044);
+  benzeno(     .87, .15, 40, .050);
+  oxigenio(    .14, .46, 16, .040);
+  metano(      .08, .65, 21, .042);
+  agua(        .53, .67, 20, .046);
+  amonia(      .91, .69, 20, .042);
+
+  /* ---- 4) EQUAÇÕES E LEIS ---- */
+  /* lei da velocidade e Arrhenius — o coração da cinética */
+  formula('v = k · [A]ᵐ · [B]ⁿ',                 .28, .10, 38, .062, AZUL);
+  /* decomposição da água oxigenada: a reação-símbolo da catálise */
+  formula('2 H₂O₂  →  2 H₂O  +  O₂',            .05, .30, 46, .068, AMBAR);
+  formula('Ea',                                  .52, .25, 30, .046, AMBAR);
+  formula('2 SO₂ + O₂ → 2 SO₃',                  .64, .32, 26, .038);
+  formula('k = A · e^(−Ea/RT)',                  .30, .47, 34, .056, ROXO);
+  formula('V₂O₅',                                .88, .44, 24, .036, ROXO);
+  formula('MnO₂',                                .27, .61, 28, .042, ROXO);
+  formula('ΔH',                                  .73, .60, 26, .040, AZUL);
+  /* síntese de Haber, ataque do zinco e efervescência do carbonato */
+  formula('N₂ + 3 H₂  ⇌  2 NH₃',                 .04, .83, 32, .046);
+  formula('Zn + 2 HCl → ZnCl₂ + H₂',             .35, .85, 24, .034);
+  formula('v = ΔC / Δt',                         .72, .83, 34, .056, AMBAR);
+  formula('CaCO₃ + 2 HCl → CaCl₂ + H₂O + CO₂',   .12, .93, 24, .036);
 
   /* 6) barra de acento do rodapé do slide */
   c.fillStyle = 'rgba(255,59,48,.14)';
