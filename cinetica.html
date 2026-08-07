@@ -652,7 +652,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.0.3</div>
+  <div id="versao">v1.0.4</div>
   <div id="hudCamera"></div>
 
   <!-- Aviso de modo demonstração -->
@@ -695,7 +695,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.0.3';
+const VERSAO = 'v1.0.4';
 
 /* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
@@ -2001,13 +2001,28 @@ const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
 let camEstado = { theta:0, phi:1.16, dist:11.5, target:new THREE.Vector3(0,1.4,0) };
 let camTween  = null;
 
+/* --------------------------------------------------------------------------
+   Compensação para tela em RETRATO.
+   As constantes CAM_* foram escolhidas em paisagem. Num celular em pé a cena
+   sai cortada nas laterais, então afastamos a câmera proporcionalmente.
+   Preferimos mexer na distância e não no FOV: aumentar o FOV distorceria a
+   perspectiva da bancada.
+   -------------------------------------------------------------------------- */
+const ASPECT_BASE = 1.5;
+function fatorRetrato(){
+  if(!camera) return 1;
+  const a = camera.aspect;
+  return a >= ASPECT_BASE ? 1 : clamp(ASPECT_BASE / a, 1, 2.1);
+}
+
 function aplicarCamera(){
   const s = camEstado;
+  const d = s.dist * fatorRetrato();
   const sp = Math.sin(s.phi), cp = Math.cos(s.phi);
   camera.position.set(
-    s.target.x + s.dist * sp * Math.sin(s.theta),
-    s.target.y + s.dist * cp,
-    s.target.z + s.dist * sp * Math.cos(s.theta)
+    s.target.x + d * sp * Math.sin(s.theta),
+    s.target.y + d * cp,
+    s.target.z + d * sp * Math.cos(s.theta)
   );
   camera.lookAt(s.target);
 }
