@@ -61,6 +61,23 @@ ativacao: () => rodarStory([
 Os quizzes são data-driven em `QUIZZES.quiz1.itens`, com quatro tipos de interação:
 `alternativas`, `figuras`, `arrastar` e `3d`.
 
+## Cenário
+
+A sala tem duas paredes. A do **fundo** carrega o quadro onde os gráficos são projetados.
+A **lateral esquerda** (`x = -7.4`) é um "slide de apresentação": fundo em degradê, faixas
+diagonais nos cantos, barra de acento no rodapé e, como marca d'água, a própria curva da
+energia de ativação com a rota do catalisador. Tudo tom sobre tom, a poucos por cento de
+luminância do fundo, para nunca competir com a bancada.
+
+O enquadramento de referência dela é a constante `CAM_PAREDE`:
+
+```js
+{ theta: 1.50, phi: 1.38, dist: 4.7, target:[1.2,3.6,-1.1] }
+```
+
+Madeira, metal e a parede são texturas geradas em `<canvas>` no boot — nenhum arquivo
+externo, o PWA continua funcionando offline.
+
 ## Câmera livre (ferramenta de desenvolvimento)
 
 Serve para descobrir enquadramentos e colar as coordenadas direto no código.

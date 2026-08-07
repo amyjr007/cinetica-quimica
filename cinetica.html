@@ -705,7 +705,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.0.7</div>
+  <div id="versao">v1.0.8</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -763,7 +763,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.0.7';
+const VERSAO = 'v1.0.8';
 
 /* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
@@ -1271,6 +1271,9 @@ const atualizadores = [];     // funções (dt) => {} chamadas todo frame
 
 /* ---- material toon com contorno ---- */
 let mapaToon = null;
+
+/* Texturas reaproveitadas entre cenas — limparGrupo() nunca as descarta. */
+const TEXTURAS_COMPARTILHADAS = new Set();
 function gradienteToon(){
   if(mapaToon) return mapaToon;
   /* Degraus de luz do toon shading. O shader lê o texel em .rgb, então o
@@ -1359,6 +1362,7 @@ function texturaMadeira(){
   c.putImageData(img, 0, 0);
 
   _texMadeira = new THREE.CanvasTexture(cv);
+  TEXTURAS_COMPARTILHADAS.add(_texMadeira);
   _texMadeira.wrapS = _texMadeira.wrapT = THREE.RepeatWrapping;
   _texMadeira.anisotropy = 8;
   return _texMadeira;
@@ -1385,6 +1389,7 @@ function texturaMetal(){
     c.beginPath(); c.moveTo(x, y); c.lineTo(x + comp, y + (Math.random() - .5) * .8); c.stroke();
   }
   _texMetal = new THREE.CanvasTexture(cv);
+  TEXTURAS_COMPARTILHADAS.add(_texMetal);
   _texMetal.wrapS = _texMetal.wrapT = THREE.RepeatWrapping;
   _texMetal.anisotropy = 8;
   return _texMetal;
@@ -1433,6 +1438,125 @@ function prepararAmbiente(){
   _ambiente = pmrem.fromCubemap(cubo).texture;
   pmrem.dispose();
   cubo.dispose();
+}
+
+/* --------------------------------------------------------------------------
+   TEXTURA DA PAREDE LATERAL — "slide de apresentação"
+   Tom sobre tom: todos os elementos ficam a poucos por cento de luminância do
+   fundo, para lerem como marca d'água e nunca competirem com a bancada.
+   Elementos típicos de um tema de PowerPoint: faixas diagonais nos cantos,
+   uma barra de acento e um watermark central — aqui, a curva da energia de
+   ativação, que é o símbolo da cinética.
+   -------------------------------------------------------------------------- */
+let _texParede = null;
+function texturaParedeSlide(){
+  if(_texParede) return _texParede;
+  const W = 1400, H = 900;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+
+  /* 1) base: gradiente vertical (mais claro em cima, onde bate a luz) */
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0,   '#2b1613');
+  g.addColorStop(.55, '#1d0f0d');
+  g.addColorStop(1,   '#130a08');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+
+  /* --- ÁREA DE SLIDE ---------------------------------------------------
+     A parede é grande (22x14) mas a câmera de referência (CAM_PAREDE) só
+     enquadra um recorte dela: da metade de baixo para cima. Compomos o
+     "slide" dentro dessa área, em coordenadas relativas — assim os cantos
+     e o rodapé caem onde a câmera realmente olha, em vez de ficarem fora
+     de quadro. Fora da área, sobra só o gradiente de fundo.
+     ---------------------------------------------------------------------- */
+  const SX = W * .03, SW = W * .94;
+  const SY = H * .26, SH = H * .72;
+  const sx = (u) => SX + SW * u;          // 0..1 → x dentro do slide
+  const sy = (v) => SY + SH * v;          // 0..1 → y dentro do slide
+
+  /* 2) faixas diagonais dos cantos do slide */
+  const faixa = (pts, cor) => {
+    c.fillStyle = cor; c.beginPath();
+    c.moveTo(sx(pts[0][0]), sy(pts[0][1]));
+    for(let i = 1; i < pts.length; i++) c.lineTo(sx(pts[i][0]), sy(pts[i][1]));
+    c.closePath(); c.fill();
+  };
+  /* canto superior direito */
+  faixa([[.60,0],[1,0],[1,.40],[.80,0]], 'rgba(255,157,51,.05)');
+  faixa([[.78,0],[1,0],[1,.23]],         'rgba(255,59,48,.06)');
+  faixa([[.90,0],[1,0],[1,.09]],         'rgba(255,196,107,.07)');
+  /* canto inferior esquerdo */
+  faixa([[0,1],[.34,1],[0,.62]],         'rgba(255,157,51,.04)');
+  faixa([[0,1],[.18,1],[0,.81]],         'rgba(255,59,48,.05)');
+
+  /* 3) watermark: a curva do diagrama de energia, à esquerda do slide */
+  const bx = sx(.10), by = sy(.74), bw = SW*.52, bh = SH*.46;
+  const morro = (altura, cor, tracejada) => {
+    c.save();
+    c.strokeStyle = cor; c.lineWidth = 11; c.lineCap = 'round'; c.lineJoin = 'round';
+    if(tracejada) c.setLineDash([18, 15]);
+    c.beginPath();
+    c.moveTo(bx, by);
+    c.lineTo(bx + bw*.18, by);
+    c.bezierCurveTo(bx + bw*.34, by, bx + bw*.36, by - bh*altura,
+                    bx + bw*.50, by - bh*altura);
+    c.bezierCurveTo(bx + bw*.64, by - bh*altura, bx + bw*.62, by + bh*.18,
+                    bx + bw*.80, by + bh*.18);
+    c.lineTo(bx + bw, by + bh*.18);
+    c.stroke();
+    c.restore();
+  };
+  morro(1,   'rgba(255,157,51,.070)',  false);   // sem catalisador
+  morro(.55, 'rgba(200,107,255,.055)', true);    // rota catalisada
+  /* eixos fantasma do gráfico */
+  c.strokeStyle = 'rgba(255,255,255,.035)'; c.lineWidth = 4;
+  c.beginPath();
+  c.moveTo(bx - 40, by - bh*1.25); c.lineTo(bx - 40, by + bh*.42);
+  c.lineTo(bx + bw + 40, by + bh*.42);
+  c.stroke();
+
+  /* 4) moléculas discretas (dois átomos ligados) */
+  const molecula = (x, y, r, ang, alpha) => {
+    const dx = Math.cos(ang) * r * 1.55, dy = Math.sin(ang) * r * 1.55;
+    c.strokeStyle = 'rgba(255,255,255,' + (alpha * .8) + ')';
+    c.lineWidth = Math.max(2, r * .22);
+    c.beginPath(); c.moveTo(x - dx, y - dy); c.lineTo(x + dx, y + dy); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+    c.beginPath(); c.arc(x - dx, y - dy, r, 0, 6.284); c.fill();
+    c.beginPath(); c.arc(x + dx, y + dy, r * .78, 0, 6.284); c.fill();
+  };
+  molecula(sx(.80), sy(.16), 30, -0.5, .032);
+  molecula(sx(.93), sy(.34), 19,  0.7, .026);
+  molecula(sx(.66), sy(.90), 24,  0.3, .026);
+  molecula(sx(.20), sy(.10), 17, -0.9, .022);
+  molecula(sx(.44), sy(.20), 13,  0.2, .020);
+
+  /* 5) bolhas dispersas (efervescência) */
+  for(let i = 0; i < 44; i++){
+    const x = sx(Math.random()), y = sy(Math.random()), r = 3 + Math.random()*9;
+    c.fillStyle = 'rgba(255,255,255,' + (0.010 + Math.random()*0.016).toFixed(3) + ')';
+    c.beginPath(); c.arc(x, y, r, 0, 6.284); c.fill();
+  }
+
+  /* 6) barra de acento do rodapé do slide */
+  c.fillStyle = 'rgba(255,59,48,.14)';
+  c.fillRect(sx(0), sy(.97), SW, 5);
+  c.fillStyle = 'rgba(255,157,51,.26)';
+  c.fillRect(sx(.04), sy(.97) - 1, SW*.17, 7);
+  /* filete fino no topo do slide, como cabeçalho de template */
+  c.fillStyle = 'rgba(255,157,51,.09)';
+  c.fillRect(sx(0), sy(.02), SW, 3);
+
+  /* 7) vinheta para as bordas não brigarem com o canto da sala */
+  const v = c.createRadialGradient(W*.5, H*.45, H*.30, W*.5, H*.5, H*.95);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,.45)');
+  c.fillStyle = v; c.fillRect(0, 0, W, H);
+
+  _texParede = new THREE.CanvasTexture(cv);
+  TEXTURAS_COMPARTILHADAS.add(_texParede);
+  _texParede.anisotropy = 8;
+  return _texParede;
 }
 
 /* ---- Materiais prontos ---- */
@@ -1513,11 +1637,13 @@ function limparGrupo(g){
     if(o.material){
       const ms = Array.isArray(o.material) ? o.material : [o.material];
       ms.forEach((m)=>{
-        /* madeira()/metal() clonam a textura por material — libera os clones
-           para não vazar VRAM a cada remontagem de cena. O envMap e as
-           texturas-base ficam (são compartilhados e reaproveitados). */
-        ['map','bumpMap','roughnessMap','normalMap'].forEach((k)=>{
-          if(m[k] && m[k] !== _texMadeira && m[k] !== _texMetal) m[k].dispose();
+        /* madeira()/metal() clonam a textura por material — liberamos os
+           clones para não vazar VRAM a cada remontagem de cena.
+           As texturas-BASE (madeira, metal, parede) são reaproveitadas entre
+           cenas: se forem descartadas aqui, a próxima montagem renderiza sem
+           elas. Por isso ficam registradas em TEXTURAS_COMPARTILHADAS. */
+        ['map','bumpMap','roughnessMap','normalMap','emissiveMap'].forEach((k)=>{
+          if(m[k] && !TEXTURAS_COMPARTILHADAS.has(m[k])) m[k].dispose();
         });
         m.dispose();
       });
@@ -1569,6 +1695,22 @@ function criarSala(){
   const moldura = new THREE.Mesh(new THREE.PlaneGeometry(11, 6.1), toon(0x4a2a26));
   moldura.position.set(0, 3.4, -6.1); g.add(moldura);
   g.userData.quadro = quadro;
+
+  /* --- Parede LATERAL esquerda, no estilo "slide de apresentação" ---
+     Fica além da bancada (que vai até x = -6.5) para não cortá-la.
+     Enquadramento de referência:
+       { theta: 1.50, phi: 1.38, dist: 4.7, target:[1.2,3.6,-1.1] }  = CAM_PAREDE
+     MeshBasicMaterial de propósito: o desenho é tom sobre tom e as luzes da
+     cena são fracas — com material que recebe luz, a marca d'água sumiria.
+     O gradiente de "iluminação" já está pintado na própria textura. */
+  const paredeLateral = new THREE.Mesh(
+    new THREE.PlaneGeometry(22, 14),
+    new THREE.MeshBasicMaterial({ map: texturaParedeSlide() })
+  );
+  paredeLateral.position.set(-7.4, 4, -1);
+  paredeLateral.rotation.y = Math.PI / 2;   // vira a face para +X (para a cena)
+  g.add(paredeLateral);
+  g.userData.paredeLateral = paredeLateral;
 
   /* Chão discreto */
   const chao = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), toon(0x100706));
@@ -2065,6 +2207,8 @@ const CAM_ARENA_P = { theta: 0.34, phi: 1.34, dist:  7.6, target:[0, 2.45, 0] };
 const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  8.6, target:[0, 3.0, -2.6] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
+/* Olha para a parede lateral esquerda (o "slide"). */
+const CAM_PAREDE  = { theta: 1.50, phi: 1.38, dist:  4.7, target:[1.2, 3.6, -1.1] };
 
 let camEstado = { theta:0, phi:1.16, dist:11.5, target:new THREE.Vector3(0,1.4,0) };
 let camTween  = null;
