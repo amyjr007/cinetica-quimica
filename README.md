@@ -61,8 +61,33 @@ ativacao: () => rodarStory([
 Os quizzes são data-driven em `QUIZZES.quiz1.itens`, com quatro tipos de interação:
 `alternativas`, `figuras`, `arrastar` e `3d`.
 
-**Câmera livre:** toque no selo de versão (canto inferior direito) para orbitar a cena e
-copiar as coordenadas prontas para colar numa constante `CAM_*`.
+## Câmera livre (ferramenta de desenvolvimento)
+
+Serve para descobrir enquadramentos e colar as coordenadas direto no código.
+
+**Liga e desliga com a tecla `L`** (ou tocando no selo de versão, no canto inferior direito).
+
+| Gesto / tecla | O que faz |
+|---|---|
+| 1 dedo (ou arrastar com o mouse) | gira em torno do alvo — `theta` / `phi` |
+| 2 dedos | move o alvo no plano da tela (pan) |
+| pinça **abrindo** | vai para frente (aproxima) |
+| pinça **fechando** | vai para trás (afasta) |
+| roda do mouse | aproxima / afasta |
+| setas · `W` / `S` | movem o alvo em X/Y e em Z (`Shift` = passo maior) |
+| `+` / `-` | aproxima / afasta pelo teclado |
+| **`C`** | copia a posição para a área de transferência |
+| `R` | volta à posição inicial |
+| `L` | sai do modo |
+
+O `C` copia algo assim, pronto para colar numa constante `CAM_*`:
+
+```js
+{ theta: 0.42, phi: 1.22, dist: 6.4, target:[-2.6,1.1,0.2] }
+```
+
+Enquanto a câmera livre está ligada, `irParaCamera()` é ignorada — a coreografia não rouba
+o enquadramento no meio do ajuste.
 
 ## Rodar localmente
 

@@ -446,15 +446,41 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 
 #hudCamera{
   position:fixed; z-index:70; right:10px; bottom:46px; display:none;
+  max-width:min(84vw,320px);
   padding:10px 12px; border-radius:12px; font-family:var(--mono); font-size:11.5px;
-  background:rgba(26,11,10,.92); border:1px solid var(--rubi); color:var(--rubi);
-  box-shadow:var(--sombra); line-height:1.65; white-space:pre; text-align:left;
+  background:rgba(26,11,10,.94); border:1px solid var(--rubi); color:var(--rubi);
+  box-shadow:var(--sombra); line-height:1.65; white-space:pre-wrap; text-align:left;
+  backdrop-filter:blur(6px);
 }
 #hudCamera.on{ display:block; }
-#hudCamera button{
-  margin-top:8px; width:100%; padding:6px; border-radius:8px; border:1px solid var(--rubi);
-  background:transparent; color:var(--rubi); font-family:var(--mono); font-size:11px; cursor:pointer;
+#hudCamera b{ display:block; letter-spacing:.14em; margin-bottom:4px; font-size:10.5px; }
+#hudCamera i{
+  display:block; margin-top:6px; font-style:normal; font-size:10.5px;
+  color:var(--texto2); white-space:normal; line-height:1.5;
 }
+#hudCamera button{
+  margin-top:8px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--rubi);
+  background:rgba(255,59,48,.12); color:var(--rubi);
+  font-family:var(--mono); font-size:11px; font-weight:700; cursor:pointer;
+}
+#hudCamera button:active{ background:rgba(255,59,48,.3); }
+
+/* Em câmera livre o canvas engole os gestos do navegador (pinça/scroll),
+   senão o Chrome do celular faz zoom da página em vez de mover a câmera. */
+canvas#cena3d.livre{ touch-action:none; cursor:grab; }
+canvas#cena3d.livre:active{ cursor:grabbing; }
+
+/* Aviso curto no rodapé (copiado, câmera livre ligada…) */
+#toast{
+  position:fixed; z-index:95; left:50%; bottom:calc(46px + env(safe-area-inset-bottom));
+  transform:translate(-50%,12px); opacity:0; visibility:hidden; pointer-events:none;
+  padding:8px 16px; border-radius:999px; max-width:88vw; text-align:center;
+  font-family:var(--fonte); font-size:13px; font-weight:700; letter-spacing:.02em;
+  background:rgba(26,11,10,.95); border:1px solid var(--rubi); color:var(--rubi);
+  box-shadow:var(--sombra); backdrop-filter:blur(6px);
+  transition:opacity .25s ease, visibility .25s, transform .25s cubic-bezier(.2,1.4,.4,1);
+}
+#toast.show{ opacity:1; visibility:visible; transform:translate(-50%,0); }
 
 /* Tela de carregamento */
 #carregando{
@@ -652,8 +678,9 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.0.4</div>
+  <div id="versao">v1.0.5</div>
   <div id="hudCamera"></div>
+  <div id="toast"></div>
 
   <!-- Aviso de modo demonstração -->
   <div id="avisoAudio">modo demonstração — sem áudios em audios/</div>
@@ -695,7 +722,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.0.4';
+const VERSAO = 'v1.0.5';
 
 /* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
@@ -2033,7 +2060,11 @@ function irParaCamera(pos, suave, durMs){
     theta: pos.theta, phi: clamp(pos.phi, .08, Math.PI - .08), dist: pos.dist,
     target: new THREE.Vector3().fromArray(pos.target || [0,1,0])
   };
-  if(!suave || camLivre){
+  /* Em CÂMERA LIVRE a coreografia não mexe na câmera: você explora a cena
+     sem a narração roubar o enquadramento no meio do ajuste. */
+  if(camLivre){ camTween = null; return; }
+
+  if(!suave){
     camEstado.theta = alvo.theta; camEstado.phi = alvo.phi; camEstado.dist = alvo.dist;
     camEstado.target.copy(alvo.target);
     aplicarCamera(); camTween = null; return;
@@ -2066,93 +2097,233 @@ function tickOrbita(dt){
   camEstado.theta += orbitaSuave * dt;
 }
 
-/* --------------------------------------------------------------------------
-   MODO CÂMERA LIVRE — clique no selo de versão para ligar/desligar.
-   Arraste = theta/phi · roda/pinça = dist · setas = mover o alvo.
-   O HUD mostra o objeto pronto para colar numa constante CAM_*.
-   -------------------------------------------------------------------------- */
+/* ##########################################################################
+   MODO CÂMERA LIVRE — ferramenta de desenvolvimento
+   --------------------------------------------------------------------------
+   LIGAR/DESLIGAR:  tecla L  (ou toque no selo de versão)
+   GESTOS (mesmo código para mouse e toque, via Pointer Events):
+     1 dedo / arrastar ....... girar em torno do alvo (theta / phi)
+     2 dedos ................. mover o alvo no plano da tela (pan)
+     pinça abrindo ........... vai PARA FRENTE (aproxima)
+     pinça fechando .......... vai PARA TRÁS (afasta)
+     roda do mouse ........... aproxima / afasta
+     setas + W/S ............. mover o alvo (X/Y e Z)
+   COPIAR:  tecla C  (ou o botão do HUD) → põe no clipboard o objeto pronto
+            para colar numa constante CAM_*.
+   Enquanto está ligado, irParaCamera() é ignorada: a coreografia não rouba
+   o enquadramento no meio do ajuste.
+   ########################################################################## */
 let camLivre = false;
 
 function alternarCamLivre(){
   camLivre = !camLivre;
   $('versao').classList.toggle('livre', camLivre);
   $('hudCamera').classList.toggle('on', camLivre);
+  $('cena3d').classList.toggle('livre', camLivre);
   camTween = null;
-  if(camLivre){ playSfx('click'); atualizarHud(); }
+  playSfx('click', .4);
+  if(camLivre){ atualizarHud(); toast('câmera livre — L sai · C copia'); }
+  else { toast('câmera livre desligada'); }
 }
+
+/* Texto pronto para colar numa constante CAM_*. */
+function textoCamera(){
+  const s = camEstado;
+  return '{ theta: ' + s.theta.toFixed(2) +
+         ', phi: '   + s.phi.toFixed(2) +
+         ', dist: '  + s.dist.toFixed(1) +
+         ', target:[' + s.target.x.toFixed(1) + ',' +
+                        s.target.y.toFixed(1) + ',' +
+                        s.target.z.toFixed(1) + '] }';
+}
+
 function atualizarHud(){
   if(!camLivre) return;
   const s = camEstado;
   $('hudCamera').innerHTML =
-    '{ theta: ' + s.theta.toFixed(2) +
-    ', phi: '  + s.phi.toFixed(2) +
-    ',\n  dist: ' + s.dist.toFixed(1) +
-    ', target:[' + s.target.x.toFixed(1) + ',' + s.target.y.toFixed(1) + ',' + s.target.z.toFixed(1) + '] }' +
-    '<button id="btnCopiarCam">copiar</button>';
+    '<b>CÂMERA LIVRE</b>\n' +
+    '{ theta: ' + s.theta.toFixed(2) + ', phi: ' + s.phi.toFixed(2) + ',\n' +
+    '  dist: '  + s.dist.toFixed(1) + ', target:[' +
+       s.target.x.toFixed(1) + ',' + s.target.y.toFixed(1) + ',' + s.target.z.toFixed(1) + '] }\n' +
+    '<i>1 dedo girar · 2 dedos pan · pinça zoom</i>' +
+    '<button id="btnCopiarCam">copiar posição (C)</button>';
   const b = $('btnCopiarCam');
-  if(b) b.onclick = (ev)=>{
-    ev.stopPropagation();
-    const txt = '{ theta: ' + s.theta.toFixed(2) + ', phi: ' + s.phi.toFixed(2) +
-                ', dist: ' + s.dist.toFixed(1) + ', target:[' +
-                s.target.x.toFixed(1) + ',' + s.target.y.toFixed(1) + ',' + s.target.z.toFixed(1) + '] }';
-    if(navigator.clipboard) navigator.clipboard.writeText(txt).catch(()=>{});
-    b.textContent = 'copiado!';
-    setTimeout(()=>{ if($('btnCopiarCam')) $('btnCopiarCam').textContent = 'copiar'; }, 1200);
+  if(b) b.onclick = (ev)=>{ ev.stopPropagation(); copiarCamera(); };
+}
+
+/* ---- Copiar para a área de transferência (com plano B) ---- */
+function copiarCamera(){
+  const txt = textoCamera();
+  const ok = ()=>{
+    playSfx('pop', .4);
+    toast('posição copiada ✓');
+    const b = $('btnCopiarCam');
+    if(b){ b.textContent = 'copiado ✓'; setTimeout(()=>{ const x=$('btnCopiarCam'); if(x) x.textContent='copiar posição (C)'; }, 1300); }
   };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(ok).catch(()=> copiarPlanoB(txt, ok));
+  } else {
+    copiarPlanoB(txt, ok);
+  }
+}
+/* navigator.clipboard exige contexto seguro e às vezes gesto do usuário. */
+function copiarPlanoB(txt, ok){
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const deu = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if(deu) ok(); else toast('copie do HUD: ' + txt);
+  } catch(e){
+    toast(txt, 9000);   /* sem clipboard: deixa o texto na tela para copiar à mão */
+  }
+}
+
+/* ---- Toast curto no rodapé ---- */
+let _toastTimer = null;
+function toast(msg, ms){
+  const t = $('toast'); if(!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=> t.classList.remove('show'), ms || 2200);
+}
+
+/* --------------------------------------------------------------------------
+   Pan: move o ALVO no plano perpendicular à câmera.
+   A escala converte pixels em unidades de mundo usando a altura visível na
+   distância atual — assim o cenário "gruda" no dedo em qualquer zoom.
+   -------------------------------------------------------------------------- */
+const _vDir = new THREE.Vector3();
+const _vDireita = new THREE.Vector3(), _vCima = new THREE.Vector3();
+function panCamera(dxPx, dyPx){
+  const distEfetiva = camEstado.dist * fatorRetrato();
+  const alturaVisivel = 2 * distEfetiva * Math.tan(camera.fov * Math.PI / 360);
+  const escala = alturaVisivel / Math.max(1, window.innerHeight);
+
+  camera.getWorldDirection(_vDir);
+  _vDireita.crossVectors(_vDir, camera.up).normalize();
+  _vCima.crossVectors(_vDireita, _vDir).normalize();
+
+  /* arrastar para a direita leva a cena junto → o alvo anda para a esquerda */
+  camEstado.target.addScaledVector(_vDireita, -dxPx * escala);
+  camEstado.target.addScaledVector(_vCima,     dyPx * escala);
 }
 
 function ligarControlesCamLivre(){
   const cv = $('cena3d');
-  let arrastando = false, px = 0, py = 0, dist0 = 0, pinca0 = 0;
+
+  /* Um Map com todos os dedos/ponteiros ativos: é o que permite tratar
+     1 dedo, 2 dedos e pinça no mesmo fluxo. */
+  const ponteiros = new Map();
+  let pincaAnterior = 0;
+  let centroAnterior = null;
+
+  function centro(){
+    let x = 0, y = 0;
+    ponteiros.forEach(p => { x += p.x; y += p.y; });
+    const n = ponteiros.size || 1;
+    return { x: x / n, y: y / n };
+  }
+  function abertura(){
+    const ps = Array.from(ponteiros.values());
+    if(ps.length < 2) return 0;
+    return Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+  }
+  /* Rearma as referências: evita o "salto" quando um dedo entra ou sai. */
+  function rearmar(){
+    centroAnterior = ponteiros.size ? centro() : null;
+    pincaAnterior  = abertura();
+  }
 
   cv.addEventListener('pointerdown', (e)=>{
     if(!camLivre) return;
-    arrastando = true; px = e.clientX; py = e.clientY;
-    cv.setPointerCapture(e.pointerId);
+    try { cv.setPointerCapture(e.pointerId); } catch(_){}
+    ponteiros.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    rearmar();
   });
-  cv.addEventListener('pointermove', (e)=>{
-    if(!camLivre || !arrastando) return;
-    const dx = e.clientX - px, dy = e.clientY - py;
-    px = e.clientX; py = e.clientY;
-    camEstado.theta -= dx * .006;
-    camEstado.phi    = clamp(camEstado.phi - dy * .005, .08, Math.PI - .08);
-    atualizarHud();
-  });
-  const soltar = ()=>{ arrastando = false; };
-  cv.addEventListener('pointerup', soltar);
-  cv.addEventListener('pointercancel', soltar);
 
-  cv.addEventListener('wheel', (e)=>{
-    if(!camLivre) return;
+  cv.addEventListener('pointermove', (e)=>{
+    if(!camLivre || !ponteiros.has(e.pointerId)) return;
     e.preventDefault();
-    camEstado.dist = clamp(camEstado.dist * (1 + Math.sign(e.deltaY) * .08), 1.2, 40);
+    ponteiros.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+    const c = centro();
+    if(!centroAnterior){ centroAnterior = c; return; }
+    const dx = c.x - centroAnterior.x;
+    const dy = c.y - centroAnterior.y;
+
+    if(ponteiros.size === 1){
+      /* --- 1 dedo: ÓRBITA --- */
+      camEstado.theta -= dx * .0065;
+      camEstado.phi    = clamp(camEstado.phi - dy * .0055, .06, Math.PI - .06);
+    } else {
+      /* --- 2+ dedos: PAN pelo centroide + PINÇA pela abertura --- */
+      panCamera(dx, dy);
+      const ab = abertura();
+      if(pincaAnterior > 0 && ab > 0){
+        /* abrindo (ab > pincaAnterior) → razão < 1 → dist diminui → avança */
+        camEstado.dist = clamp(camEstado.dist * (pincaAnterior / ab), .4, 60);
+      }
+      pincaAnterior = ab;
+    }
+    centroAnterior = c;
     atualizarHud();
   }, { passive:false });
 
-  cv.addEventListener('touchstart', (e)=>{
-    if(!camLivre || e.touches.length !== 2) return;
-    pinca0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY);
-    dist0 = camEstado.dist;
-  }, { passive:true });
-  cv.addEventListener('touchmove', (e)=>{
-    if(!camLivre || e.touches.length !== 2) return;
-    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
-                         e.touches[0].clientY - e.touches[1].clientY);
-    if(pinca0 > 0) camEstado.dist = clamp(dist0 * pinca0 / d, 1.2, 40);
-    atualizarHud();
-  }, { passive:true });
+  const soltar = (e)=>{
+    if(!ponteiros.has(e.pointerId)) return;
+    ponteiros.delete(e.pointerId);
+    rearmar();
+  };
+  cv.addEventListener('pointerup', soltar);
+  cv.addEventListener('pointercancel', soltar);
 
-  window.addEventListener('keydown', (e)=>{
+  /* Roda do mouse / trackpad */
+  cv.addEventListener('wheel', (e)=>{
     if(!camLivre) return;
-    const p = e.shiftKey ? .5 : .15;
-    if(e.key === 'ArrowUp')    camEstado.target.y += p;
-    if(e.key === 'ArrowDown')  camEstado.target.y -= p;
-    if(e.key === 'ArrowLeft')  camEstado.target.x -= p;
-    if(e.key === 'ArrowRight') camEstado.target.x += p;
-    if(e.key === 'w') camEstado.target.z -= p;
-    if(e.key === 's') camEstado.target.z += p;
+    e.preventDefault();
+    const passo = 1 + clamp(e.deltaY, -120, 120) / 120 * .12;
+    camEstado.dist = clamp(camEstado.dist * passo, .4, 60);
     atualizarHud();
+  }, { passive:false });
+
+  /* ---- Teclado ---- */
+  window.addEventListener('keydown', (e)=>{
+    /* não sequestra teclas se algo estiver sendo digitado */
+    const alvo = e.target;
+    if(alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable)) return;
+    if(e.ctrlKey || e.metaKey || e.altKey) return;
+
+    const k = (e.key || '').toLowerCase();
+
+    /* L liga e desliga o modo (funciona mesmo fora da câmera livre) */
+    if(k === 'l'){ e.preventDefault(); alternarCamLivre(); return; }
+    if(!camLivre) return;
+
+    /* C copia a posição atual */
+    if(k === 'c'){ e.preventDefault(); copiarCamera(); return; }
+
+    const p = e.shiftKey ? .5 : .15;
+    let mexeu = true;
+    switch(e.key){
+      case 'ArrowUp':    camEstado.target.y += p; break;
+      case 'ArrowDown':  camEstado.target.y -= p; break;
+      case 'ArrowLeft':  camEstado.target.x -= p; break;
+      case 'ArrowRight': camEstado.target.x += p; break;
+      default:
+        if(k === 'w')      camEstado.target.z -= p;
+        else if(k === 's') camEstado.target.z += p;
+        else if(k === '+' || k === '=') camEstado.dist = clamp(camEstado.dist * .92, .4, 60);
+        else if(k === '-' || k === '_') camEstado.dist = clamp(camEstado.dist * 1.08, .4, 60);
+        else if(k === 'r'){ camEstado.target.set(0, 1.4, 0); camEstado.dist = 11.5;
+                            camEstado.theta = 0; camEstado.phi = 1.16; toast('câmera reiniciada'); }
+        else mexeu = false;
+    }
+    if(mexeu){ e.preventDefault(); atualizarHud(); }
   });
 }
 
@@ -3383,8 +3554,7 @@ function animar(){
 
   for(let i = 0; i < atualizadores.length; i++) atualizadores[i](dt);
 
-  if(camLivre && (performance.now() % 6 | 0) === 0) atualizarHud();
-  renderer.render(scene, camera);
+  renderer.render(scene, camera);   /* o HUD é atualizado nos gestos, não aqui */
 }
 
 /* ==========================================================================
