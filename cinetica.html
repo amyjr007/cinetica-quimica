@@ -481,6 +481,32 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   transition:opacity .25s ease, visibility .25s, transform .25s cubic-bezier(.2,1.4,.4,1);
 }
 #toast.show{ opacity:1; visibility:visible; transform:translate(-50%,0); }
+/* Plano B do copiar: o texto precisa dar para selecionar com o dedo. */
+#toast.selecionavel{
+  pointer-events:auto; user-select:text; -webkit-user-select:text;
+  font-family:var(--mono); font-size:12px; font-weight:600; line-height:1.5;
+}
+
+/* ---- Anel do "segurar 3s para copiar" ---- */
+#segurar{
+  position:fixed; z-index:96; width:86px; height:86px; margin:-43px 0 0 -43px;
+  pointer-events:none; opacity:0; visibility:hidden;
+  transition:opacity .18s ease, visibility .18s;
+}
+#segurar.on{ opacity:1; visibility:visible; }
+#segurar svg{ width:100%; height:100%; transform:rotate(-90deg); display:block; }
+#segurar .trilha{ fill:rgba(26,11,10,.72); stroke:rgba(255,59,48,.25); stroke-width:6; }
+#segurar .prog{
+  fill:none; stroke:var(--rubi); stroke-width:6; stroke-linecap:round;
+  stroke-dasharray:270.2; stroke-dashoffset:270.2;
+}
+#segurar.on .prog{ animation:encherAnel var(--dur-segurar,3s) linear forwards; }
+@keyframes encherAnel{ to{ stroke-dashoffset:0; } }
+#segurar span{
+  position:absolute; inset:0; display:grid; place-items:center;
+  font-family:var(--fonte); font-size:11px; font-weight:800; letter-spacing:.06em;
+  color:var(--rubi); text-transform:uppercase;
+}
 
 /* Tela de carregamento */
 #carregando{
@@ -678,9 +704,18 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.0.5</div>
+  <div id="versao">v1.0.6</div>
   <div id="hudCamera"></div>
   <div id="toast"></div>
+
+  <!-- Anel de progresso do "segurar 3s para copiar" (só em câmera livre) -->
+  <div id="segurar" aria-hidden="true">
+    <svg viewBox="0 0 100 100">
+      <circle class="trilha" cx="50" cy="50" r="43"/>
+      <circle class="prog"   cx="50" cy="50" r="43"/>
+    </svg>
+    <span>copiar</span>
+  </div>
 
   <!-- Aviso de modo demonstração -->
   <div id="avisoAudio">modo demonstração — sem áudios em audios/</div>
@@ -722,7 +757,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.0.5';
+const VERSAO = 'v1.0.6';
 
 /* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
@@ -2122,8 +2157,8 @@ function alternarCamLivre(){
   $('cena3d').classList.toggle('livre', camLivre);
   camTween = null;
   playSfx('click', .4);
-  if(camLivre){ atualizarHud(); toast('câmera livre — L sai · C copia'); }
-  else { toast('câmera livre desligada'); }
+  if(camLivre){ atualizarHud(); toast('câmera livre · segure 3s para copiar'); }
+  else { cancelarSegurar(); toast('câmera livre desligada'); }
 }
 
 /* Texto pronto para colar numa constante CAM_*. */
@@ -2145,8 +2180,8 @@ function atualizarHud(){
     '{ theta: ' + s.theta.toFixed(2) + ', phi: ' + s.phi.toFixed(2) + ',\n' +
     '  dist: '  + s.dist.toFixed(1) + ', target:[' +
        s.target.x.toFixed(1) + ',' + s.target.y.toFixed(1) + ',' + s.target.z.toFixed(1) + '] }\n' +
-    '<i>1 dedo girar · 2 dedos pan · pinça zoom</i>' +
-    '<button id="btnCopiarCam">copiar posição (C)</button>';
+    '<i>1 dedo girar · 2 dedos pan · pinça zoom<br>segure 3s na tela para copiar</i>' +
+    '<button id="btnCopiarCam">copiar posição</button>';
   const b = $('btnCopiarCam');
   if(b) b.onclick = (ev)=>{ ev.stopPropagation(); copiarCamera(); };
 }
@@ -2158,7 +2193,7 @@ function copiarCamera(){
     playSfx('pop', .4);
     toast('posição copiada ✓');
     const b = $('btnCopiarCam');
-    if(b){ b.textContent = 'copiado ✓'; setTimeout(()=>{ const x=$('btnCopiarCam'); if(x) x.textContent='copiar posição (C)'; }, 1300); }
+    if(b){ b.textContent = 'copiado ✓'; setTimeout(()=>{ const x=$('btnCopiarCam'); if(x) x.textContent='copiar posição'; }, 1300); }
   };
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt).then(ok).catch(()=> copiarPlanoB(txt, ok));
@@ -2176,17 +2211,19 @@ function copiarPlanoB(txt, ok){
     ta.focus(); ta.select();
     const deu = document.execCommand('copy');
     document.body.removeChild(ta);
-    if(deu) ok(); else toast('copie do HUD: ' + txt);
-  } catch(e){
-    toast(txt, 9000);   /* sem clipboard: deixa o texto na tela para copiar à mão */
-  }
+    if(deu){ ok(); return; }
+  } catch(e){ /* cai no aviso abaixo */ }
+  /* Sem clipboard disponível: deixa o texto na tela, selecionável, para
+     copiar à mão. É o caso do Safari sem gesto direto do usuário. */
+  toast(txt, 12000, true);
 }
 
 /* ---- Toast curto no rodapé ---- */
 let _toastTimer = null;
-function toast(msg, ms){
+function toast(msg, ms, selecionavel){
   const t = $('toast'); if(!t) return;
   t.textContent = msg;
+  t.classList.toggle('selecionavel', !!selecionavel);
   t.classList.add('show');
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(()=> t.classList.remove('show'), ms || 2200);
@@ -2212,6 +2249,43 @@ function panCamera(dxPx, dyPx){
   camEstado.target.addScaledVector(_vDireita, -dxPx * escala);
   camEstado.target.addScaledVector(_vCima,     dyPx * escala);
 }
+
+/* --------------------------------------------------------------------------
+   SEGURAR 3s PARA COPIAR (o "C" do celular)
+   Com UM dedo parado na tela por 3 segundos, copia a posição da câmera.
+   Um anel de progresso nasce no ponto do toque para você ver a contagem.
+   Cancela se o dedo andar (aí você está girando), se entrar um segundo dedo
+   ou se soltar antes do tempo.
+   -------------------------------------------------------------------------- */
+const MS_SEGURAR   = 3000;   // tempo para disparar
+const TOLERANCIA_PX = 16;    // quanto o dedo pode tremer sem cancelar
+
+let _segTimer = null, _segOrigem = null;
+
+function iniciarSegurar(x, y){
+  cancelarSegurar();
+  _segOrigem = { x, y };
+  const el = $('segurar');
+  if(el){
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    el.style.setProperty('--dur-segurar', (MS_SEGURAR / 1000) + 's');
+    /* reinicia a animação do anel */
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+  }
+  _segTimer = setTimeout(()=>{
+    _segTimer = null;
+    if(el) el.classList.remove('on');
+    if(navigator.vibrate) { try { navigator.vibrate([25, 45, 25]); } catch(_){} }
+    copiarCamera();
+  }, MS_SEGURAR);
+}
+function cancelarSegurar(){
+  if(_segTimer){ clearTimeout(_segTimer); _segTimer = null; }
+  _segOrigem = null;
+  const el = $('segurar'); if(el) el.classList.remove('on');
+}
+function segurandoAgora(){ return _segTimer !== null; }
 
 function ligarControlesCamLivre(){
   const cv = $('cena3d');
@@ -2244,12 +2318,26 @@ function ligarControlesCamLivre(){
     try { cv.setPointerCapture(e.pointerId); } catch(_){}
     ponteiros.set(e.pointerId, { x:e.clientX, y:e.clientY });
     rearmar();
+
+    /* 1 dedo parado por 3s = copiar. Com 2 dedos é pan/pinça, então cancela. */
+    if(ponteiros.size === 1) iniciarSegurar(e.clientX, e.clientY);
+    else cancelarSegurar();
   });
 
   cv.addEventListener('pointermove', (e)=>{
     if(!camLivre || !ponteiros.has(e.pointerId)) return;
     e.preventDefault();
     ponteiros.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+    /* Cancela o "segurar para copiar" se virou outro gesto:
+       - entrou um segundo dedo (pan/pinça)
+       - o dedo andou mais que a tolerância (está girando)
+       A checagem de 2 dedos também é feita no pointerdown; repetimos aqui
+       porque nem todo navegador entrega o pointerdown do segundo dedo. */
+    if(_segOrigem){
+      if(ponteiros.size > 1) cancelarSegurar();
+      else if(Math.hypot(e.clientX - _segOrigem.x, e.clientY - _segOrigem.y) > TOLERANCIA_PX) cancelarSegurar();
+    }
 
     const c = centro();
     if(!centroAnterior){ centroAnterior = c; return; }
@@ -2278,6 +2366,7 @@ function ligarControlesCamLivre(){
     if(!ponteiros.has(e.pointerId)) return;
     ponteiros.delete(e.pointerId);
     rearmar();
+    cancelarSegurar();       // soltou antes dos 3s → não copia
   };
   cv.addEventListener('pointerup', soltar);
   cv.addEventListener('pointercancel', soltar);

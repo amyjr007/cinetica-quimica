@@ -65,22 +65,38 @@ Os quizzes são data-driven em `QUIZZES.quiz1.itens`, com quatro tipos de intera
 
 Serve para descobrir enquadramentos e colar as coordenadas direto no código.
 
-**Liga e desliga com a tecla `L`** (ou tocando no selo de versão, no canto inferior direito).
+### No celular
 
-| Gesto / tecla | O que faz |
+**Toque no selo de versão** (canto inferior direito) para ligar — ele fica vermelho sólido.
+Toque de novo para sair.
+
+| Gesto | O que faz |
 |---|---|
-| 1 dedo (ou arrastar com o mouse) | gira em torno do alvo — `theta` / `phi` |
+| 1 dedo | gira em torno do alvo — `theta` / `phi` |
 | 2 dedos | move o alvo no plano da tela (pan) |
 | pinça **abrindo** | vai para frente (aproxima) |
 | pinça **fechando** | vai para trás (afasta) |
+| **segurar 1 dedo parado por 3 s** | **copia a posição** |
+
+Ao segurar, um anel de progresso nasce sob o dedo e vai preenchendo até os 3 s — aí vibra e
+copia. Cancela se você arrastar (está girando), encostar um segundo dedo ou soltar antes.
+Um tremor de até 16 px não cancela.
+
+### No computador
+
+`L` liga e desliga (o selo de versão também funciona).
+
+| Gesto / tecla | O que faz |
+|---|---|
+| arrastar com o mouse | gira em torno do alvo |
 | roda do mouse | aproxima / afasta |
+| segurar o botão parado 3 s | copia a posição |
+| **`C`** | copia a posição |
 | setas · `W` / `S` | movem o alvo em X/Y e em Z (`Shift` = passo maior) |
 | `+` / `-` | aproxima / afasta pelo teclado |
-| **`C`** | copia a posição para a área de transferência |
 | `R` | volta à posição inicial |
-| `L` | sai do modo |
 
-O `C` copia algo assim, pronto para colar numa constante `CAM_*`:
+Copia algo assim, pronto para colar numa constante `CAM_*`:
 
 ```js
 { theta: 0.42, phi: 1.22, dist: 6.4, target:[-2.6,1.1,0.2] }
