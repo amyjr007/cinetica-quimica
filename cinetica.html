@@ -1,0 +1,3481 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#150a09">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="imagens/icone-192.png">
+<title>Cinética Química — Audiobook Animado</title>
+<style>
+/* ==========================================================================
+   PALETA / TOKENS
+   ========================================================================== */
+:root{
+  /* ---- TEMA VERMELHO (v1.0.2) ----------------------------------------
+     A base é grafite-vinho, não mais verde-petróleo, para o app não se
+     confundir com o de Ácidos. O acento de UI passou de verde-limão para
+     rubi. O VERDE sobrou só como sinal de ACERTO no quiz (--acerto): num
+     tema vermelho, marcar acerto de vermelho brigaria com o erro.        */
+  --bg:        #150a09;   /* grafite-vinho escuro (base laboratório) */
+  --bg2:       #24110f;
+  --painel:    rgba(28,12,11,.88);
+  --borda:     rgba(255,59,48,.30);
+  --texto:     #f6ece9;
+  --texto2:    #bda19b;
+
+  --quente:    #ff9d33;   /* calor / energia de ativação */
+  --fogo:      #ff5a3c;   /* vermelho-quente */
+  --frio:      #6fb7ff;   /* frio / baixa energia */
+  --rubi:      #ff3b30;   /* ACENTO PRINCIPAL da UI (era --lima) */
+  --acerto:    #3ddc84;   /* verde esmeralda — só feedback de acerto */
+  --roxo:      #c86bff;   /* catalisador / nova rota */
+  --cinza:     #7f6f6c;   /* colisão não efetiva */
+
+  --sombra:    0 10px 34px rgba(0,0,0,.55);
+  --fonte:     'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --mono:      ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{
+  margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+  background:var(--bg); color:var(--texto); font-family:var(--fonte);
+  overscroll-behavior:none; touch-action:manipulation;
+}
+#app{ position:fixed; inset:0; }
+canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
+
+/* Vinheta suave por cima do 3D, pro texto brilhar */
+#vinheta{
+  position:fixed; inset:0; z-index:2; pointer-events:none;
+  background:radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 40%, rgba(0,0,0,.55) 100%);
+}
+
+/* ==========================================================================
+   ANIMAÇÕES REUTILIZÁVEIS ("dramáticas")
+   ========================================================================== */
+@keyframes popIn{
+  0%{ transform:scale(.4) translateY(18px); opacity:0; }
+  60%{ transform:scale(1.12) translateY(-4px); opacity:1; }
+  100%{ transform:scale(1) translateY(0); opacity:1; }
+}
+@keyframes brilhar{
+  0%,100%{ opacity:.35; } 50%{ opacity:1; }
+}
+@keyframes tremer{
+  0%,100%{ transform:translate(0,0) }
+  15%{ transform:translate(-11px,5px) rotate(-.5deg) }
+  30%{ transform:translate(9px,-7px) rotate(.5deg) }
+  45%{ transform:translate(-8px,-4px) }
+  60%{ transform:translate(7px,6px) }
+  75%{ transform:translate(-4px,3px) }
+}
+@keyframes flutuar{
+  0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-7px) }
+}
+/* popar()/pulsar() são feitos em JS (Web Animations, composite:'add') para
+   não destruir o transform de centralização — ver comentário no JS. */
+.tremendo{ animation:tremer .5s ease-in-out both; }
+
+/* ==========================================================================
+   OVERLAYS BASE — tudo aparece/some pela classe .show
+   ========================================================================== */
+.overlay{
+  position:fixed; z-index:20; opacity:0; visibility:hidden;
+  transition:opacity .45s ease, visibility .45s, transform .45s cubic-bezier(.2,1.2,.4,1);
+  pointer-events:none;
+}
+.overlay.show{ opacity:1; visibility:visible; pointer-events:auto; }
+.overlay.semclique, .overlay.semclique.show{ pointer-events:none; }
+
+/* ---------- Título / subtítulo (abertura de seção) ---------- */
+#titulo{
+  top:12%; left:0; right:0; text-align:center; transform:translateY(16px);
+}
+#titulo.show{ transform:translateY(0); }
+#titulo h1{
+  margin:0; font-size:clamp(28px,6.2vw,68px); font-weight:800; letter-spacing:.06em;
+  text-transform:uppercase; line-height:1.05;
+  background:linear-gradient(92deg,var(--rubi),var(--quente) 55%,var(--fogo));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 6px 22px rgba(255,157,51,.35));
+}
+#titulo h2{
+  margin:.5em auto 0; max-width:22ch; font-size:clamp(13px,2.4vw,22px);
+  font-weight:500; color:var(--texto2); letter-spacing:.02em;
+}
+
+/* ---------- Legenda inferior (máquina de escrever) ---------- */
+#legenda{
+  left:50%; bottom:14vh; transform:translate(-50%,14px);
+  width:min(92vw,900px); text-align:center;
+}
+#legenda.show{ transform:translate(-50%,0); }
+#legenda .caixa{
+  display:inline-block; padding:.65em 1.1em; border-radius:14px;
+  background:var(--painel); border:1px solid var(--borda);
+  box-shadow:var(--sombra); backdrop-filter:blur(9px);
+  font-size:clamp(14px,2.5vw,23px); line-height:1.5; color:var(--texto);
+}
+#legenda .caixa .cursor{
+  display:inline-block; width:.55ch; background:var(--rubi);
+  animation:brilhar .8s steps(1) infinite; margin-left:2px;
+}
+
+/* ---------- Cartão de fórmula ---------- */
+#formula{
+  left:50%; top:16%; transform:translate(-50%,-14px) scale(.9);
+}
+#formula.show{ transform:translate(-50%,0) scale(1); }
+#formula .caixa{
+  font-family:var(--mono); font-size:clamp(19px,4.4vw,44px); font-weight:700;
+  padding:.5em .95em; border-radius:16px; letter-spacing:.03em;
+  background:linear-gradient(180deg,rgba(34,16,14,.95),rgba(26,11,10,.95));
+  border:1.5px solid var(--quente); color:var(--quente);
+  box-shadow:0 0 34px rgba(255,157,51,.28), var(--sombra);
+  white-space:nowrap;
+}
+
+/* ---------- Etiquetas flutuantes (badges de conceito) ---------- */
+#badges{
+  left:50%; top:22%; transform:translateX(-50%);
+  display:flex; gap:10px; flex-wrap:wrap; justify-content:center;
+  width:min(94vw,860px);
+}
+.badge{
+  padding:.45em .95em; border-radius:999px; font-size:clamp(12px,2.1vw,17px);
+  font-weight:700; letter-spacing:.02em; border:1.5px solid currentColor;
+  background:rgba(26,11,10,.85); box-shadow:var(--sombra);
+  animation:popIn .5s cubic-bezier(.2,1.5,.4,1) both, flutuar 3.2s ease-in-out infinite;
+}
+.badge.quente{ color:var(--quente) } .badge.frio{ color:var(--frio) }
+.badge.rubi{ color:var(--rubi) }     .badge.roxo{ color:var(--roxo) }
+.badge.acerto{ color:var(--acerto) }
+.badge.fogo{ color:var(--fogo) }     .badge.cinza{ color:var(--cinza) }
+
+/* ==========================================================================
+   PAINEL DE GRÁFICOS (SVG) — o "coração didático"
+   ========================================================================== */
+#painelGrafico{
+  left:50%; top:50%; transform:translate(-50%,-46%) scale(.92);
+  width:min(94vw,760px);
+}
+#painelGrafico.show{ transform:translate(-50%,-50%) scale(1); }
+#painelGrafico .moldura{
+  position:relative; border-radius:18px; padding:14px 14px 10px;
+  background:linear-gradient(180deg,rgba(30,14,12,.94),rgba(20,10,9,.96));
+  border:1px solid var(--borda); box-shadow:var(--sombra);
+  backdrop-filter:blur(10px);
+}
+#painelGrafico .cabG{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin:0 4px 6px; min-height:26px;
+}
+#painelGrafico .tituloG{
+  font-size:clamp(12px,2.1vw,17px); font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--rubi);
+}
+/* Fórmula exibida DENTRO do painel: o overlay #formula central ficaria
+   coberto pelo painel de gráfico, que ocupa quase toda a tela. */
+#painelGrafico .formG{
+  font-family:var(--mono); font-weight:800; letter-spacing:.02em;
+  font-size:clamp(13px,2.3vw,21px); color:var(--quente);
+  padding:.18em .6em; border-radius:9px; white-space:nowrap;
+  border:1.5px solid transparent; opacity:0;
+  transition:opacity .35s ease;
+}
+#painelGrafico .formG.vis{
+  opacity:1; border-color:var(--quente);
+  background:rgba(26,11,10,.9); box-shadow:0 0 20px rgba(255,157,51,.25);
+}
+#painelGrafico svg{ width:100%; height:auto; display:block; overflow:visible; }
+.g-oculto{ display:none !important; }
+
+/* Elementos comuns dos SVG */
+.eixo{ stroke:#8a726c; stroke-width:2; }
+.eixo-txt{ fill:var(--texto2); font-size:14px; font-family:var(--fonte); }
+.grade{ stroke:rgba(255,255,255,.06); stroke-width:1; }
+.rotulo{ font-size:15px; font-weight:700; font-family:var(--fonte); }
+.tracejado{ stroke-dasharray:6 6; }
+.curva{ fill:none; stroke-linecap:round; stroke-linejoin:round; stroke-width:4; }
+.desenhavel{ transition:stroke-dashoffset 1.4s cubic-bezier(.4,.05,.2,1); }
+.aparece{ opacity:0; transition:opacity .5s ease, transform .5s cubic-bezier(.2,1.4,.4,1); }
+.aparece.vis{ opacity:1; }
+/* pulsar() escala grupos <g> do SVG: sem fill-box a origem vira o canto
+   do viewport do SVG e a seta "salta" em vez de pulsar no lugar. */
+#painelGrafico svg g{ transform-box:fill-box; transform-origin:center; }
+
+/* ---------- Termômetro (fixo à esquerda) ---------- */
+#termometro{ left:16px; top:50%; transform:translateY(-50%) scale(.9); }
+#termometro.show{ transform:translateY(-50%) scale(1); }
+#termometro .caixa{
+  padding:10px 12px; border-radius:16px; background:var(--painel);
+  border:1px solid var(--borda); box-shadow:var(--sombra); text-align:center;
+}
+#termometro .valor{
+  font-family:var(--mono); font-weight:800; font-size:16px; color:var(--quente);
+  margin-top:6px;
+}
+
+/* ==========================================================================
+   BOTÃO DE PLAY
+   ========================================================================== */
+#play{
+  left:50%; bottom:4.5vh; transform:translate(-50%,10px);
+  z-index:40;
+}
+#play.show{ transform:translate(-50%,0); }
+#btnPlay{
+  display:flex; align-items:center; gap:12px; cursor:pointer;
+  padding:14px 30px 14px 22px; border-radius:999px; border:0;
+  font-family:var(--fonte); font-size:clamp(15px,2.6vw,20px); font-weight:800;
+  letter-spacing:.03em; color:#ffece9;
+  background:linear-gradient(135deg,var(--rubi),#c4160e);
+  box-shadow:0 10px 30px rgba(255,59,48,.35), 0 0 0 6px rgba(255,59,48,.10);
+  transition:transform .18s cubic-bezier(.2,1.6,.4,1), box-shadow .2s;
+}
+#btnPlay:active{ transform:scale(.94); }
+#btnPlay .ico{
+  width:30px; height:30px; border-radius:50%; background:#ffece9; color:var(--rubi);
+  display:grid; place-items:center; font-size:15px;
+}
+
+/* ==========================================================================
+   SUMÁRIO (navegação rápida)
+   ========================================================================== */
+#btnSumario{
+  position:fixed; z-index:45; top:calc(12px + env(safe-area-inset-top)); left:12px;
+  width:46px; height:46px; border-radius:14px; border:1px solid var(--borda);
+  background:var(--painel); color:var(--rubi); cursor:pointer;
+  display:grid; place-items:center; gap:4px; box-shadow:var(--sombra);
+  backdrop-filter:blur(8px); transition:transform .18s;
+}
+#btnSumario:active{ transform:scale(.9); }
+#btnSumario span{ display:block; width:20px; height:2.5px; border-radius:2px; background:currentColor; }
+
+#sumario{
+  top:0; left:0; bottom:0; width:min(86vw,360px); transform:translateX(-104%);
+  z-index:60; background:linear-gradient(180deg,#0d1e19,#081411);
+  border-right:1px solid var(--borda); box-shadow:12px 0 40px rgba(0,0,0,.6);
+  padding:calc(18px + env(safe-area-inset-top)) 14px 18px; overflow-y:auto;
+  opacity:1; visibility:hidden;
+}
+#sumario.show{ transform:translateX(0); visibility:visible; }
+#sumario h3{
+  margin:6px 0 14px 6px; font-size:13px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--rubi);
+}
+.item-sum{
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  padding:11px 12px; margin-bottom:7px; border-radius:12px; cursor:pointer;
+  background:rgba(255,255,255,.035); border:1px solid transparent;
+  color:var(--texto); font-family:var(--fonte); font-size:15px; font-weight:600;
+  transition:background .15s, border-color .15s, transform .12s;
+}
+.item-sum:active{ transform:scale(.98); }
+.item-sum:hover{ background:rgba(255,59,48,.10); border-color:var(--borda); }
+.item-sum.atual{ background:rgba(255,59,48,.16); border-color:var(--rubi); }
+.item-sum .n{
+  width:26px; height:26px; flex:0 0 26px; border-radius:8px; display:grid; place-items:center;
+  background:rgba(255,59,48,.18); color:var(--rubi); font-size:12px; font-weight:800;
+}
+#fundoSum{
+  position:fixed; inset:0; z-index:55; background:rgba(0,0,0,.55);
+  opacity:0; visibility:hidden; transition:opacity .3s, visibility .3s;
+}
+#fundoSum.show{ opacity:1; visibility:visible; }
+
+/* ==========================================================================
+   QUIZ
+   ========================================================================== */
+#quiz{
+  left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(96vw,880px); z-index:35;
+}
+.quiz-card{
+  background:linear-gradient(180deg,rgba(32,15,13,.96),rgba(20,10,9,.97));
+  border:1px solid var(--borda); border-radius:20px; box-shadow:var(--sombra);
+  padding:18px 18px 16px; backdrop-filter:blur(10px);
+  transition:transform .5s cubic-bezier(.4,.05,.2,1), opacity .5s;
+}
+.quiz-card.sai-direita{ transform:translateX(125%); opacity:0; }
+.quiz-card.entra-esquerda{ transform:translateX(-125%); opacity:0; transition:none; }
+
+.quiz-topo{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-bottom:10px;
+}
+.quiz-passo{
+  font-size:12px; letter-spacing:.14em; text-transform:uppercase; font-weight:800;
+  color:var(--rubi);
+}
+.quiz-pontos{ font-size:12px; color:var(--texto2); font-family:var(--mono); }
+.quiz-barra{ height:4px; border-radius:4px; background:rgba(255,255,255,.08); overflow:hidden; margin-bottom:12px; }
+.quiz-barra i{ display:block; height:100%; width:0; background:linear-gradient(90deg,var(--rubi),var(--quente)); transition:width .5s; }
+
+.quiz-enunciado{
+  font-size:clamp(15px,2.6vw,22px); font-weight:600; line-height:1.45; margin:0 0 12px;
+}
+.quiz-figura{ display:flex; justify-content:center; margin:0 0 12px; }
+.quiz-figura svg{ max-width:100%; height:auto; }
+.quiz-figura .emoji{ font-size:clamp(38px,9vw,66px); line-height:1; }
+
+.quiz-alts{ display:grid; gap:9px; }
+.quiz-alts.duas-col{ grid-template-columns:1fr 1fr; }
+@media(max-width:560px){ .quiz-alts.duas-col{ grid-template-columns:1fr; } }
+
+.alt{
+  display:flex; align-items:center; gap:11px; text-align:left; cursor:pointer;
+  padding:12px 14px; border-radius:13px; font-family:var(--fonte);
+  font-size:clamp(14px,2.3vw,18px); font-weight:600; color:var(--texto);
+  background:rgba(255,255,255,.04); border:1.5px solid rgba(255,255,255,.09);
+  transition:background .15s, border-color .15s, transform .12s, opacity .3s;
+  opacity:0; transform:translateY(10px);
+}
+.alt.vis{ opacity:1; transform:translateY(0); transition:opacity .4s, transform .4s cubic-bezier(.2,1.4,.4,1), background .15s, border-color .15s; }
+.alt:active{ transform:scale(.98); }
+.alt:hover{ background:rgba(255,59,48,.10); border-color:var(--borda); }
+.alt .letra{
+  width:28px; height:28px; flex:0 0 28px; border-radius:9px; display:grid; place-items:center;
+  background:rgba(255,255,255,.08); font-weight:800; font-size:13px; color:var(--texto2);
+}
+/* Acerto usa --acerto (verde); erro usa --fogo. Num tema vermelho, marcar
+   acerto de vermelho brigaria com a sinalização de erro. */
+.alt.certa{ background:rgba(61,220,132,.18); border-color:var(--acerto); color:#fff; }
+.alt.certa .letra{ background:var(--acerto); color:#0d2a1a; }
+.alt.errada{ background:rgba(255,90,60,.18); border-color:var(--fogo); }
+.alt.errada .letra{ background:var(--fogo); color:#fff; }
+.alt.travada{ pointer-events:none; }
+.alt.apagada{ opacity:.4; }
+
+/* --- Cards de figura clicáveis (ex.: qual colisão forma produto) --- */
+.quiz-figs{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media(max-width:520px){ .quiz-figs{ grid-template-columns:1fr; } }
+.fig-alt{
+  cursor:pointer; border-radius:15px; padding:10px; text-align:center;
+  background:rgba(255,255,255,.04); border:1.5px solid rgba(255,255,255,.09);
+  transition:background .15s, border-color .15s, transform .12s;
+  opacity:0; transform:translateY(10px);
+}
+.fig-alt.vis{ opacity:1; transform:translateY(0); transition:opacity .4s, transform .4s cubic-bezier(.2,1.4,.4,1); }
+.fig-alt:active{ transform:scale(.97); }
+.fig-alt .rot{ margin-top:6px; font-weight:700; font-size:15px; color:var(--texto2); }
+.fig-alt.certa{ background:rgba(61,220,132,.16); border-color:var(--acerto); }
+.fig-alt.certa .rot{ color:var(--acerto); }
+.fig-alt.errada{ background:rgba(255,90,60,.16); border-color:var(--fogo); }
+.fig-alt.travada{ pointer-events:none; }
+
+/* --- Arrastar e soltar --- */
+.dnd-alvos{ display:grid; grid-template-columns:repeat(4,1fr); gap:9px; margin-bottom:14px; }
+@media(max-width:620px){ .dnd-alvos{ grid-template-columns:repeat(2,1fr); } }
+.dnd-alvo{
+  min-height:82px; border-radius:14px; padding:8px 6px; text-align:center;
+  border:2px dashed rgba(255,255,255,.18); background:rgba(255,255,255,.03);
+  display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:6px;
+  transition:border-color .15s, background .15s;
+}
+.dnd-alvo .cab{ font-size:12px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--texto2); }
+.dnd-alvo.sobre{ border-color:var(--rubi); background:rgba(255,59,48,.12); }
+.dnd-alvo.ok{ border-style:solid; border-color:var(--acerto); background:rgba(61,220,132,.10); }
+.dnd-alvo.nok{ border-style:solid; border-color:var(--fogo); }
+.dnd-chips{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; min-height:44px; }
+.chip{
+  padding:9px 13px; border-radius:11px; font-size:14px; font-weight:700; cursor:grab;
+  background:linear-gradient(180deg,rgba(255,59,48,.20),rgba(255,59,48,.08));
+  border:1.5px solid var(--borda); color:var(--texto); user-select:none;
+  touch-action:none; transition:transform .12s, box-shadow .15s;
+}
+.chip.arrastando{ position:fixed; z-index:200; cursor:grabbing; transform:scale(1.06) rotate(-2deg); box-shadow:0 14px 30px rgba(0,0,0,.6); pointer-events:none; }
+.chip.encaixado{ font-size:12.5px; padding:6px 9px; cursor:default; }
+#quizDica{
+  margin-top:10px; font-size:clamp(13px,2.1vw,16px); color:var(--texto2);
+  text-align:center; min-height:1.3em; line-height:1.45; font-weight:600;
+}
+#quizDica.dica-ok{ color:var(--acerto); }
+#quizDica.dica-erro{ color:var(--fogo); }
+
+/* --- Botão de ação dentro do quiz (ex.: "conferir", "clique na cena") --- */
+.quiz-acao{
+  margin:12px auto 0; display:block; padding:11px 24px; border-radius:999px; border:0;
+  font-family:var(--fonte); font-weight:800; font-size:16px; cursor:pointer; color:#ffece9;
+  background:linear-gradient(135deg,var(--rubi),#c4160e); box-shadow:0 8px 22px rgba(255,59,48,.3);
+}
+.quiz-acao[disabled]{ opacity:.4; pointer-events:none; }
+
+/* --- Aviso "responda na cena 3D" --- */
+#quiz3dAviso{
+  left:50%; bottom:16vh; transform:translate(-50%,10px); z-index:35;
+  width:min(92vw,620px); text-align:center;
+}
+#quiz3dAviso.show{ transform:translate(-50%,0); }
+#quiz3dAviso .caixa{
+  display:inline-block; padding:.7em 1.2em; border-radius:14px;
+  background:var(--painel); border:1.5px solid var(--roxo); color:var(--texto);
+  box-shadow:0 0 30px rgba(200,107,255,.25), var(--sombra);
+  font-size:clamp(14px,2.4vw,20px); font-weight:700;
+}
+
+/* ==========================================================================
+   EFEITOS: confete, flash vermelho, selo de versão, HUD câmera livre
+   ========================================================================== */
+#confete{ position:fixed; inset:0; z-index:90; pointer-events:none; }
+#flashVermelho{
+  position:fixed; inset:0; z-index:88; pointer-events:none; opacity:0;
+  background:radial-gradient(ellipse at center, rgba(255,60,40,.15), rgba(255,30,20,.55));
+  transition:opacity .12s;
+}
+#flashVermelho.on{ opacity:1; }
+#flashBranco{
+  position:fixed; inset:0; z-index:88; pointer-events:none; opacity:0;
+  background:#fff; transition:opacity .35s;
+}
+#flashBranco.on{ opacity:.75; transition:opacity .06s; }
+
+#versao{
+  position:fixed; z-index:70; right:10px; bottom:calc(8px + env(safe-area-inset-bottom));
+  padding:5px 11px; border-radius:999px; cursor:pointer; user-select:none;
+  font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.06em;
+  color:var(--rubi); background:rgba(26,11,10,.75); border:1px solid var(--borda);
+  transition:transform .15s, background .2s;
+}
+#versao:active{ transform:scale(.9); }
+#versao.livre{ color:#ffece9; background:var(--rubi); }
+
+#hudCamera{
+  position:fixed; z-index:70; right:10px; bottom:46px; display:none;
+  padding:10px 12px; border-radius:12px; font-family:var(--mono); font-size:11.5px;
+  background:rgba(26,11,10,.92); border:1px solid var(--rubi); color:var(--rubi);
+  box-shadow:var(--sombra); line-height:1.65; white-space:pre; text-align:left;
+}
+#hudCamera.on{ display:block; }
+#hudCamera button{
+  margin-top:8px; width:100%; padding:6px; border-radius:8px; border:1px solid var(--rubi);
+  background:transparent; color:var(--rubi); font-family:var(--mono); font-size:11px; cursor:pointer;
+}
+
+/* Tela de carregamento */
+#carregando{
+  position:fixed; inset:0; z-index:120; display:grid; place-items:center;
+  background:var(--bg); transition:opacity .6s, visibility .6s;
+}
+#carregando.sumiu{ opacity:0; visibility:hidden; }
+#carregando .miolo{ text-align:center; }
+#carregando .anel{
+  width:56px; height:56px; margin:0 auto 18px; border-radius:50%;
+  border:4px solid rgba(255,59,48,.18); border-top-color:var(--rubi);
+  animation:girar 1s linear infinite;
+}
+@keyframes girar{ to{ transform:rotate(360deg) } }
+#carregando p{ margin:0; color:var(--texto2); font-size:14px; letter-spacing:.1em; text-transform:uppercase; }
+
+/* Aviso de áudio ausente (modo demonstração) */
+#avisoAudio{
+  position:fixed; z-index:70; left:50%; top:calc(10px + env(safe-area-inset-top));
+  transform:translateX(-50%); padding:6px 13px; border-radius:999px;
+  font-size:11.5px; font-weight:700; letter-spacing:.04em;
+  background:rgba(255,157,51,.16); border:1px solid rgba(255,157,51,.5); color:var(--quente);
+  opacity:0; visibility:hidden; transition:opacity .4s, visibility .4s;
+}
+#avisoAudio.show{ opacity:1; visibility:visible; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== CENA 3D ===================== -->
+  <canvas id="cena3d"></canvas>
+  <div id="vinheta"></div>
+
+  <!-- ===================== OVERLAYS ===================== -->
+
+  <!-- Título de seção -->
+  <div id="titulo" class="overlay semclique">
+    <h1 id="tituloH1"></h1>
+    <h2 id="tituloH2"></h2>
+  </div>
+
+  <!-- Fórmula em destaque -->
+  <div id="formula" class="overlay semclique"><span class="caixa" id="formulaTxt"></span></div>
+
+  <!-- Badges de conceito -->
+  <div id="badges" class="overlay semclique"></div>
+
+  <!-- Legenda / máquina de escrever -->
+  <div id="legenda" class="overlay semclique"><span class="caixa"><span id="legendaTxt"></span><i class="cursor" id="legendaCursor">&nbsp;</i></span></div>
+
+  <!-- Painel de gráficos (SVG) -->
+  <div id="painelGrafico" class="overlay semclique">
+    <div class="moldura">
+      <div class="cabG">
+        <span class="tituloG" id="painelTitulo">Gráfico</span>
+        <span class="formG" id="painelFormula"></span>
+      </div>
+
+      <!-- ---------- (1) CONCENTRAÇÃO x TEMPO ---------- -->
+      <svg id="svgConc" class="g-oculto" viewBox="0 0 560 330" aria-label="Concentração por tempo">
+        <g id="cGrade"></g>
+        <line class="eixo" x1="70" y1="285" x2="530" y2="285"/>
+        <line class="eixo" x1="70" y1="285" x2="70"  y2="30"/>
+        <text class="eixo-txt" x="285" y="318" text-anchor="middle">tempo (s)</text>
+        <text class="eixo-txt" x="-158" y="24" transform="rotate(-90)" text-anchor="middle">concentração (mol/L)</text>
+        <path id="cReag" class="curva desenhavel" stroke="#6fb7ff"/>
+        <path id="cProd" class="curva desenhavel" stroke="#3ddc84"/>
+        <g id="cDelta" class="aparece">
+          <line class="eixo tracejado" stroke="#ff9d33" x1="140" y1="285" x2="140" y2="90"/>
+          <line class="eixo tracejado" stroke="#ff9d33" x1="260" y1="285" x2="260" y2="160"/>
+          <line stroke="#ff9d33" stroke-width="3" x1="140" y1="90"  x2="260" y2="90"/>
+          <line stroke="#ff9d33" stroke-width="3" x1="260" y1="90"  x2="260" y2="160"/>
+          <text class="rotulo" fill="#ff9d33" x="200" y="78" text-anchor="middle">Δt</text>
+          <text class="rotulo" fill="#ff9d33" x="272" y="130">ΔC</text>
+        </g>
+        <g id="cLegenda" class="aparece">
+          <rect x="378" y="44" width="14" height="14" rx="4" fill="#6fb7ff"/>
+          <text class="eixo-txt" x="399" y="56">reagente</text>
+          <rect x="378" y="70" width="14" height="14" rx="4" fill="#3ddc84"/>
+          <text class="eixo-txt" x="399" y="82">produto</text>
+        </g>
+      </svg>
+
+      <!-- ---------- (2) DIAGRAMA DE ENERGIA ---------- -->
+      <svg id="svgEnergia" class="g-oculto" viewBox="0 0 560 330" aria-label="Diagrama de energia">
+        <line class="eixo" x1="70" y1="290" x2="530" y2="290"/>
+        <line class="eixo" x1="70" y1="290" x2="70"  y2="26"/>
+        <text class="eixo-txt" x="300" y="320" text-anchor="middle">caminho da reação</text>
+        <text class="eixo-txt" x="-158" y="24" transform="rotate(-90)" text-anchor="middle">energia (kJ)</text>
+
+        <!-- linhas-guia -->
+        <g id="eGuias" class="aparece">
+          <line class="eixo tracejado" stroke="#6fb7ff" x1="70" y1="205" x2="520" y2="205"/>
+          <line class="eixo tracejado" stroke="#ff5a3c" x1="70" y1="72"  x2="520" y2="72"/>
+          <line class="eixo tracejado" stroke="#3ddc84" x1="70" y1="248" x2="520" y2="248"/>
+        </g>
+
+        <!-- curva sem catalisador -->
+        <path id="eCurva" class="curva desenhavel" stroke="#ff9d33"/>
+        <!-- curva com catalisador (roxa) -->
+        <path id="eCurvaCat" class="curva desenhavel" stroke="#c86bff" opacity="0"/>
+
+        <!-- seta da energia de ativação -->
+        <g id="eSetaEa" class="aparece">
+          <line stroke="#ff9d33" stroke-width="3.5" x1="196" y1="205" x2="196" y2="72"/>
+          <path fill="#ff9d33" d="M196 66 l-7 13 h14 z"/>
+          <path fill="#ff9d33" d="M196 211 l-7 -13 h14 z"/>
+          <rect x="118" y="126" width="72" height="26" rx="8" fill="rgba(26,11,10,.9)" stroke="#ff9d33"/>
+          <text class="rotulo" fill="#ff9d33" x="154" y="145" text-anchor="middle">Ea</text>
+        </g>
+
+        <!-- seta da Ea com catalisador -->
+        <g id="eSetaEaCat" class="aparece">
+          <line stroke="#c86bff" stroke-width="3.5" x1="236" y1="205" x2="236" y2="140"/>
+          <path fill="#c86bff" d="M236 134 l-7 13 h14 z"/>
+          <path fill="#c86bff" d="M236 211 l-7 -13 h14 z"/>
+          <rect x="246" y="158" width="84" height="26" rx="8" fill="rgba(26,11,10,.9)" stroke="#c86bff"/>
+          <text class="rotulo" fill="#c86bff" x="288" y="177" text-anchor="middle">Ea'</text>
+        </g>
+
+        <!-- seta do ΔH -->
+        <g id="eSetaDH" class="aparece">
+          <line stroke="#3ddc84" stroke-width="3.5" x1="470" y1="205" x2="470" y2="248"/>
+          <path fill="#3ddc84" d="M470 254 l-7 -13 h14 z"/>
+          <rect x="392" y="212" width="72" height="26" rx="8" fill="rgba(26,11,10,.9)" stroke="#3ddc84"/>
+          <text class="rotulo" fill="#3ddc84" x="428" y="231" text-anchor="middle">ΔH &lt; 0</text>
+        </g>
+
+        <!-- rótulos dos patamares -->
+        <g id="eRotulos" class="aparece">
+          <text class="rotulo" fill="#6fb7ff" x="76"  y="196">reagentes</text>
+          <text class="rotulo" fill="#ff5a3c" x="300" y="58" text-anchor="middle">complexo ativado</text>
+          <text class="rotulo" fill="#3ddc84" x="520" y="272" text-anchor="end">produtos</text>
+        </g>
+      </svg>
+
+      <!-- ---------- (3) MAXWELL-BOLTZMANN ---------- -->
+      <svg id="svgMB" class="g-oculto" viewBox="0 0 560 330" aria-label="Distribuição de Maxwell-Boltzmann">
+        <line class="eixo" x1="70" y1="285" x2="530" y2="285"/>
+        <line class="eixo" x1="70" y1="285" x2="70"  y2="26"/>
+        <text class="eixo-txt" x="300" y="316" text-anchor="middle">energia cinética das moléculas</text>
+        <text class="eixo-txt" x="-155" y="24" transform="rotate(-90)" text-anchor="middle">nº de moléculas</text>
+
+        <path id="mbArea"  fill="rgba(255,157,51,.30)" stroke="none" d=""/>
+        <path id="mbFria"  class="curva tracejado" stroke="#6fb7ff" opacity="0" stroke-width="3" d=""/>
+        <path id="mbCurva" class="curva" stroke="#ff9d33" d=""/>
+
+        <g id="mbLinhaEa" class="aparece">
+          <line class="tracejado" stroke="#ff5a3c" stroke-width="3" x1="330" y1="285" x2="330" y2="34"/>
+          <rect x="288" y="8" width="86" height="24" rx="8" fill="rgba(26,11,10,.92)" stroke="#ff5a3c"/>
+          <text class="rotulo" fill="#ff5a3c" x="331" y="26" text-anchor="middle">Ea</text>
+        </g>
+        <g id="mbRotuloArea" class="aparece">
+          <text class="rotulo" fill="#ff9d33" x="404" y="200" text-anchor="middle">moléculas com</text>
+          <text class="rotulo" fill="#ff9d33" x="404" y="220" text-anchor="middle">E ≥ Ea</text>
+        </g>
+        <g id="mbLegenda" class="aparece">
+          <text class="eixo-txt" id="mbTxtT" x="500" y="52" text-anchor="end">T = 25 °C</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Termômetro -->
+  <div id="termometro" class="overlay semclique">
+    <div class="caixa">
+      <svg width="46" height="150" viewBox="0 0 46 150">
+        <rect x="15" y="8" width="16" height="112" rx="8" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.22)"/>
+        <circle cx="23" cy="128" r="15" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.22)"/>
+        <rect id="termColuna" x="19" y="70" width="8" height="52" rx="4" fill="#6fb7ff"/>
+        <circle id="termBulbo" cx="23" cy="128" r="11" fill="#6fb7ff"/>
+      </svg>
+      <div class="valor" id="termValor">25 °C</div>
+    </div>
+  </div>
+
+  <!-- Quiz -->
+  <div id="quiz" class="overlay"></div>
+  <div id="quiz3dAviso" class="overlay semclique"><span class="caixa" id="quiz3dTxt"></span></div>
+
+  <!-- Botão de play -->
+  <div id="play" class="overlay">
+    <button id="btnPlay"><span class="ico">▶</span><span id="btnPlayTxt">Começar</span></button>
+  </div>
+
+  <!-- Sumário -->
+  <button id="btnSumario" aria-label="Sumário"><span></span><span></span><span></span></button>
+  <div id="fundoSum"></div>
+  <nav id="sumario" class="overlay"><h3>Sumário</h3><div id="listaSum"></div></nav>
+
+  <!-- Efeitos -->
+  <canvas id="confete"></canvas>
+  <div id="flashVermelho"></div>
+  <div id="flashBranco"></div>
+
+  <!-- Selo de versão (clique = câmera livre) + HUD -->
+  <div id="versao">v1.0.2</div>
+  <div id="hudCamera"></div>
+
+  <!-- Aviso de modo demonstração -->
+  <div id="avisoAudio">modo demonstração — sem áudios em audios/</div>
+
+  <!-- Carregando -->
+  <div id="carregando"><div class="miolo"><div class="anel"></div><p>preparando a bancada…</p></div></div>
+
+  <!-- Player único de narração -->
+  <audio id="player" preload="auto" playsinline></audio>
+</div>
+
+<!-- Three.js LOCAL (funciona offline, no preview e no PWA instalado).
+     Se este arquivo faltar, garantirThree() lá embaixo tenta o CDN. -->
+<script src="libs/three.min.js"></script>
+<script>
+'use strict';
+/* ############################################################################
+   #  APP CINÉTICA QUÍMICA — audiobook animado                                #
+   #  ------------------------------------------------------------------      #
+   #  MAPA DO ARQUIVO                                                         #
+   #   1. VERSÃO / CONSTANTES                                                 #
+   #   2. FAIXAS (roteiro linear) + SUMÁRIO + PERSISTÊNCIA DE CENA            #
+   #   3. UTILIDADES DE DOM / OVERLAYS / MÁQUINA DE ESCREVER                  #
+   #   4. ÁUDIO: player, relógio virtual (fallback sem mp3), SFX              #
+   #   5. STORY ENGINE (cues por segundo de áudio)                            #
+   #   6. EFEITOS: confete, tremer, flash, pausaCurta                         #
+   #   7. CENA 3D (bancada, béqueres, bunsen, arena molecular, quadro)        #
+   #   8. CÂMERA ESFÉRICA + MODO CÂMERA LIVRE                                 #
+   #   9. GRÁFICOS SVG (conc×tempo, energia, Maxwell-Boltzmann, termômetro)   #
+   #  10. QUIZ ENGINE (alternativas / figuras / arrastar / 3D)                #
+   #  11. EVENTOS (coreografia de cada faixa) <<< É AQUI QUE VOCÊ MEXE        #
+   #  12. FLUXO DO BOTÃO DE PLAY (handler de 'ended', caso a caso)            #
+   #  13. BOOT / PWA                                                          #
+   ############################################################################ */
+
+/* ==========================================================================
+   1. VERSÃO / CONSTANTES
+   --------------------------------------------------------------------------
+   REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
+   no sw.js (senão o celular fica com a versão antiga).
+   ========================================================================== */
+const VERSAO = 'v1.0.2';
+
+/* Espelha a paleta do CSS (tema vermelho). */
+const CORES = {
+  bg:     0x150a09,   /* grafite-vinho — fundo da cena e da névoa */
+  quente: 0xff9d33,
+  fogo:   0xff5a3c,
+  frio:   0x6fb7ff,
+  rubi:   0xff3b30,   /* acento principal (era lima) */
+  acerto: 0x3ddc84,   /* produto formado / colisão efetiva */
+  roxo:   0xc86bff,
+  cinza:  0x7f6f6c,
+  vidro:  0xdfe9ff,
+  bancada:0x3a201d,   /* tampo vinho escuro */
+  madeira:0x2a1512
+};
+
+/* ==========================================================================
+   2. FAIXAS — roteiro linear
+   --------------------------------------------------------------------------
+   { id, arquivo, titulo, dur, texto }
+     dur   = duração aproximada em segundos. Serve para o RELÓGIO VIRTUAL
+             (quando o .mp3 ainda não existe) e para o fim automático.
+             Quando o mp3 real carregar, a duração real manda.
+     texto = narração escrita (usada como legenda/máquina de escrever).
+   ========================================================================== */
+const FAIXAS = [
+  /* --- Parte 1: conceitos --- */
+  { id:'intro', arquivo:'audios/intro.mp3', titulo:'O que a Cinética estuda', dur:34,
+    texto:'A ferrugem come um portão em anos. Uma explosão acaba em milissegundos. As duas são reações químicas — o que muda é a VELOCIDADE.' },
+
+  { id:'velocidade', arquivo:'audios/velocidade.mp3', titulo:'Velocidade de reação', dur:42,
+    texto:'Velocidade média de reação é o quanto a concentração muda dividido pelo tempo gasto: v = ΔC / Δt, em mol por litro por segundo.' },
+
+  { id:'colisoes', arquivo:'audios/colisoes.mp3', titulo:'Teoria das colisões', dur:44,
+    texto:'Para reagir, as moléculas precisam colidir. Mas não basta bater: a colisão tem que ter ORIENTAÇÃO adequada e ENERGIA suficiente.' },
+
+  { id:'ativacao', arquivo:'audios/ativacao.mp3', titulo:'Energia de ativação', dur:46,
+    texto:'A energia mínima para formar o complexo ativado é a energia de ativação, Ea — o morro que toda reação precisa subir.' },
+
+  /* --- Parte 2: fatores (a bancada 3D atravessa estas 4 faixas) --- */
+  { id:'fator_conc', arquivo:'audios/fator_conc.mp3', titulo:'Fator: concentração', dur:34,
+    texto:'Mais partículas no mesmo espaço significa mais colisões por segundo — e a reação acelera.' },
+
+  { id:'fator_superficie', arquivo:'audios/fator_superficie.mp3', titulo:'Fator: superfície de contato', dur:36,
+    texto:'O comprimido em pó tem muito mais superfície exposta que o comprimido inteiro. Mais área de contato, mais colisões, mais rápido.' },
+
+  { id:'fator_temp', arquivo:'audios/fator_temp.mp3', titulo:'Fator: temperatura', dur:44,
+    texto:'Aquecer aumenta a energia cinética média. A curva de Maxwell-Boltzmann desloca para a direita e MUITO mais moléculas passam da Ea.' },
+
+  { id:'fator_catalisador', arquivo:'audios/fator_catalisador.mp3', titulo:'Fator: catalisador', dur:46,
+    texto:'O catalisador abre um caminho alternativo com energia de ativação menor. Ele não é consumido e NÃO altera o ΔH da reação.' },
+
+  /* --- Parte 3: quiz (a engine controla a navegação entre os itens) --- */
+  { id:'quiz1', arquivo:'audios/quiz1.mp3', titulo:'Hora do quiz', dur:10,
+    texto:'Agora é com você. Seis desafios sobre tudo o que a gente viu.' },
+
+  { id:'q1a',  arquivo:'audios/q1a.mp3',  titulo:'Q01', dur:12, texto:'Questão 1: identifique o fator.' },
+  { id:'q1aR', arquivo:'audios/q1aR.mp3', titulo:'Q01 ✓', dur:9,  texto:'Isso! Triturar aumenta a superfície de contato.' },
+  { id:'q1aW', arquivo:'audios/q1aW.mp3', titulo:'Q01 ✗', dur:10, texto:'Quase. A quantidade de matéria é a mesma — o que mudou foi a área exposta.' },
+
+  { id:'q1b',  arquivo:'audios/q1b.mp3',  titulo:'Q02', dur:13, texto:'Questão 2: leia o diagrama de energia.' },
+  { id:'q1bR', arquivo:'audios/q1bR.mp3', titulo:'Q02 ✓', dur:9,  texto:'Exato: os produtos têm energia menor, então a reação é exotérmica.' },
+  { id:'q1bW', arquivo:'audios/q1bW.mp3', titulo:'Q02 ✗', dur:10, texto:'Compare os patamares: produtos abaixo dos reagentes significa liberação de energia.' },
+
+  { id:'q1c',  arquivo:'audios/q1c.mp3',  titulo:'Q03', dur:12, texto:'Questão 3: qual colisão forma produto?' },
+  { id:'q1cR', arquivo:'audios/q1cR.mp3', titulo:'Q03 ✓', dur:9,  texto:'Boa! Orientação correta e energia suficiente: colisão efetiva.' },
+  { id:'q1cW', arquivo:'audios/q1cW.mp3', titulo:'Q03 ✗', dur:10, texto:'Nessa aí as moléculas se chocam de lado — ricocheteiam sem reagir.' },
+
+  { id:'q1d',  arquivo:'audios/q1d.mp3',  titulo:'Q04', dur:15, texto:'Questão 4: arraste cada cenário para o fator correspondente.' },
+  { id:'q1dR', arquivo:'audios/q1dR.mp3', titulo:'Q04 ✓', dur:9,  texto:'Perfeito, os quatro fatores no lugar certo.' },
+  { id:'q1dW', arquivo:'audios/q1dW.mp3', titulo:'Q04 ✗', dur:11, texto:'Olha de novo: pressão mexe em concentração; moer mexe em superfície.' },
+
+  { id:'q1e',  arquivo:'audios/q1e.mp3',  titulo:'Q05', dur:12, texto:'Questão 5: o catalisador altera o quê?' },
+  { id:'q1eR', arquivo:'audios/q1eR.mp3', titulo:'Q05 ✓', dur:9,  texto:'Isso mesmo: só a energia de ativação. O ΔH continua igualzinho.' },
+  { id:'q1eW', arquivo:'audios/q1eW.mp3', titulo:'Q05 ✗', dur:10, texto:'Catalisador não mexe na energia dos reagentes nem dos produtos — logo, não muda o ΔH.' },
+
+  { id:'q1f',  arquivo:'audios/q1f.mp3',  titulo:'Q06', dur:12, texto:'Questão 6: toque no béquer em que a reação é mais rápida.' },
+  { id:'q1fR', arquivo:'audios/q1fR.mp3', titulo:'Q06 ✓', dur:9,  texto:'Certeiro: o pó reage muito mais rápido.' },
+  { id:'q1fW', arquivo:'audios/q1fW.mp3', titulo:'Q06 ✗', dur:10, texto:'O comprimido inteiro tem pouca área exposta: borbulha devagar.' },
+
+  /* --- Fecho --- */
+  { id:'encerramento', arquivo:'audios/encerramento.mp3', titulo:'Encerramento', dur:34,
+    texto:'Velocidade, colisões efetivas, energia de ativação e os quatro fatores. Agora você lê qualquer diagrama de energia.' }
+];
+
+/* Índice da faixa por id. */
+function idxFaixa(id){ return FAIXAS.findIndex(f => f.id === id); }
+function faixaPorId(id){ return FAIXAS[idxFaixa(id)]; }
+
+/* --------------------------------------------------------------------------
+   h) PERSISTÊNCIA DE CENA
+   Faixas nesta lista compartilham a MESMA cena 3D: ao trocar de faixa entre
+   elas, a cena NÃO é desmontada (o experimento continua rodando enquanto a
+   narração explica).
+   -------------------------------------------------------------------------- */
+const CENAS_PERSISTENTES = [
+  'fator_conc', 'fator_superficie', 'fator_temp', 'fator_catalisador',
+  'q1f', 'q1fR', 'q1fW'
+];
+
+/* Que cena 3D cada faixa usa. 'bancada' | 'arena' | 'quadro' */
+const CENA_DA_FAIXA = {
+  intro:'bancada', velocidade:'quadro', colisoes:'arena', ativacao:'quadro',
+  fator_conc:'bancada', fator_superficie:'bancada', fator_temp:'bancada',
+  fator_catalisador:'bancada',
+  quiz1:'bancada',
+  q1a:'bancada', q1aR:'bancada', q1aW:'bancada',
+  q1b:'quadro',  q1bR:'quadro',  q1bW:'quadro',
+  q1c:'arena',   q1cR:'arena',   q1cW:'arena',
+  q1d:'bancada', q1dR:'bancada', q1dW:'bancada',
+  q1e:'quadro',  q1eR:'quadro',  q1eW:'quadro',
+  q1f:'bancada', q1fR:'bancada', q1fW:'bancada',
+  encerramento:'bancada'
+};
+
+/* --------------------------------------------------------------------------
+   f) SUMÁRIO — navegação rápida.
+   { titulo, faixa, acao? }  → com 'acao', ela reconstrói o estado da cena
+   antes de tocar; sem 'acao', faz só tocarFaixaPorId.
+   -------------------------------------------------------------------------- */
+const SUMARIO = [
+  { titulo:'1. O que é Cinética',       faixa:'intro',             acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:.35, taxaB:2.2}); } },
+  { titulo:'2. Velocidade de reação',   faixa:'velocidade',        acao:()=>{ prepararQuadro('conc'); } },
+  { titulo:'3. Teoria das colisões',    faixa:'colisoes',          acao:()=>{ prepararArena({n:16, temperatura:1, modo:'livre'}); } },
+  { titulo:'4. Energia de ativação',    faixa:'ativacao',          acao:()=>{ prepararQuadro('energia'); } },
+  { titulo:'5. Concentração',           faixa:'fator_conc',        acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:.5, taxaB:.5}); } },
+  { titulo:'6. Superfície de contato',  faixa:'fator_superficie',  acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:.4, taxaB:.4}); } },
+  { titulo:'7. Temperatura',            faixa:'fator_temp',        acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:.5, taxaB:.5, bunsen:false}); } },
+  { titulo:'8. Catalisador',            faixa:'fator_catalisador', acao:()=>{ prepararQuadro('energia'); } },
+  { titulo:'9. Quiz',                   faixa:'quiz1',             acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:.6, taxaB:.9}); } },
+  { titulo:'10. Encerramento',          faixa:'encerramento',      acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:1.2, taxaB:1.8}); } }
+];
+
+/* ==========================================================================
+   3. UTILIDADES DE DOM / OVERLAYS / MÁQUINA DE ESCREVER
+   ========================================================================== */
+const $  = (id) => document.getElementById(id);
+const $$ = (sel, raiz) => Array.prototype.slice.call((raiz || document).querySelectorAll(sel));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp  = (a, b, t) => a + (b - a) * t;
+const easeInOutCubic = (t) => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
+
+function mostrar(id){ const e = $(id); if(e) e.classList.add('show'); }
+function esconder(id){ const e = $(id); if(e) e.classList.remove('show'); }
+
+/* Todos os overlays que somem na troca de faixa. */
+const OVERLAYS = ['titulo','formula','badges','legenda','painelGrafico','termometro','quiz','quiz3dAviso','play'];
+function esconderOverlays(){
+  OVERLAYS.forEach(esconder);
+  const pf = $('painelFormula'); if(pf) pf.classList.remove('vis');
+}
+
+/* --------------------------------------------------------------------------
+   ANIMAÇÕES DRAMÁTICAS — pop e pulso
+   ATENÇÃO: quase todos os overlays já usam `transform` para se centralizar
+   (translate(-50%,-50%)). Uma animação CSS que anime `transform` SUBSTITUI
+   esse valor e joga o painel para fora da tela. Por isso usamos a Web
+   Animations API com composite:'add', que SOMA ao transform do CSS em vez
+   de sobrescrevê-lo. Nunca troque isto por uma classe com @keyframes.
+   -------------------------------------------------------------------------- */
+function _el(idOuEl){ return (typeof idOuEl === 'string') ? $(idOuEl) : idOuEl; }
+
+function popar(idOuEl){
+  const e = _el(idOuEl);
+  if(!e || !e.animate) return;
+  e.animate([
+    { transform:'scale(.62) translateY(14px)' },
+    { transform:'scale(1.07) translateY(-4px)', offset:.62 },
+    { transform:'scale(1) translateY(0)' }
+  ], { duration:520, easing:'cubic-bezier(.2,1.5,.4,1)', composite:'add' });
+}
+
+/* Pulsa um elemento (destacar Ea, fórmula, ΔH…). Também compõe. */
+function pulsar(idOuEl, vezes){
+  const e = _el(idOuEl);
+  if(!e || !e.animate) return;
+  e.animate([
+    { transform:'scale(1)',    filter:'drop-shadow(0 0 0 rgba(255,157,51,0))' },
+    { transform:'scale(1.14)', filter:'drop-shadow(0 0 16px rgba(255,157,51,.95))', offset:.5 },
+    { transform:'scale(1)',    filter:'drop-shadow(0 0 0 rgba(255,157,51,0))' }
+  ], { duration:1000, iterations: vezes || 2, easing:'ease-in-out', composite:'add' });
+}
+
+/* ---------- Título de seção ---------- */
+function tituloSecao(h1, h2){
+  $('tituloH1').textContent = h1 || '';
+  $('tituloH2').textContent = h2 || '';
+  mostrar('titulo'); popar('titulo');
+}
+
+/* ---------- Fórmula ----------
+   Se o painel de gráfico estiver aberto, a fórmula entra no cabeçalho DELE
+   (o overlay central ficaria escondido atrás do painel). Senão, usa o
+   cartão grande no centro da tela. */
+function mostrarFormula(txt){
+  const noPainel = $('painelGrafico').classList.contains('show');
+  if(noPainel){
+    esconder('formula');              // some com o cartão central
+    const f = $('painelFormula');
+    f.textContent = txt; f.classList.add('vis'); popar(f);
+  } else {
+    $('painelFormula').classList.remove('vis');
+    $('formulaTxt').textContent = txt;
+    mostrar('formula'); popar('formula');
+  }
+}
+/* Esconde a fórmula nos dois lugares. */
+function esconderFormula(){
+  esconder('formula');
+  $('painelFormula').classList.remove('vis');
+}
+/* Pulsa a fórmula onde ela estiver. */
+function pulsarFormula(){
+  pulsar($('painelFormula').classList.contains('vis') ? $('painelFormula') : $('formula'));
+}
+
+/* ---------- Badges de conceito ---------- */
+function mostrarBadges(lista){
+  const c = $('badges'); c.innerHTML = '';
+  lista.forEach((b, i) => {
+    const el = document.createElement('span');
+    el.className = 'badge ' + (b.cor || 'rubi');
+    el.textContent = b.txt;
+    el.style.animationDelay = (i * .12) + 's, ' + (i * .3) + 's';
+    c.appendChild(el);
+  });
+  mostrar('badges');
+}
+
+/* --------------------------------------------------------------------------
+   d) MÁQUINA DE ESCREVER guiada pelo áudio.
+      digitar('legendaTxt', 'texto...', 4, 12)
+      → entre 4s e 12s do áudio o texto vai sendo revelado.
+   -------------------------------------------------------------------------- */
+let _digitacoes = [];
+function digitar(id, texto, t0, t1){
+  const el = $(id); if(!el) return;
+  el.textContent = '';
+  _digitacoes.push({ el, texto, t0, t1: Math.max(t1, t0 + .3), pronto:false });
+  if(id === 'legendaTxt') mostrar('legenda');
+}
+function limparDigitacoes(){
+  _digitacoes = [];
+  const c = $('legendaCursor'); if(c) c.style.display = '';
+}
+function tickDigitacoes(){
+  const t = tempoAtual();
+  for(let i = 0; i < _digitacoes.length; i++){
+    const d = _digitacoes[i];
+    if(d.pronto) continue;
+    const p = clamp((t - d.t0) / (d.t1 - d.t0), 0, 1);
+    const n = Math.floor(p * d.texto.length);
+    if(d.el.textContent.length !== n) d.el.textContent = d.texto.slice(0, n);
+    if(p >= 1){ d.pronto = true; d.el.textContent = d.texto; }
+  }
+  /* cursor pisca só enquanto está digitando algo na legenda */
+  const digitandoLegenda = _digitacoes.some(d => !d.pronto && d.el.id === 'legendaTxt');
+  const cur = $('legendaCursor');
+  if(cur) cur.style.display = digitandoLegenda ? '' : 'none';
+}
+
+/* Atalho: legenda = texto da própria faixa, digitado entre t0 e t1. */
+function legenda(texto, t0, t1){ digitar('legendaTxt', texto, t0, t1); }
+
+/* ==========================================================================
+   4. ÁUDIO — player único + relógio virtual + SFX
+   ========================================================================== */
+const player = $('player');
+let faixaAtual = -1;         // índice em FAIXAS
+let tocando    = false;
+
+/* ---- Relógio virtual: se o .mp3 não existir, o app roda em "modo
+   demonstração" com um cronômetro sintético, para as cues continuarem
+   funcionando. Assim dá pra testar toda a coreografia sem áudio. ---- */
+let virtual = { ativo:false, t:0, dur:30, rodando:false };
+
+function tempoAtual(){
+  return virtual.ativo ? virtual.t : (player.currentTime || 0);
+}
+function duracaoAtual(){
+  if(virtual.ativo) return virtual.dur;
+  return isFinite(player.duration) && player.duration > 0
+    ? player.duration
+    : (FAIXAS[faixaAtual] ? FAIXAS[faixaAtual].dur : 30);
+}
+function tickRelogioVirtual(dt){
+  if(!virtual.ativo || !virtual.rodando) return;
+  virtual.t += dt;
+  if(virtual.t >= virtual.dur){
+    virtual.t = virtual.dur; virtual.rodando = false;
+    aoTerminarFaixa();               // mesmo fluxo do evento 'ended'
+  }
+}
+function pausarNarracao(){
+  if(virtual.ativo) virtual.rodando = false; else player.pause();
+  tocando = false;
+}
+function retomarNarracao(){
+  if(virtual.ativo){ virtual.rodando = true; }
+  else { player.play().catch(()=>{}); }
+  tocando = true;
+}
+
+/* ---- SFX ----------------------------------------------------------------
+   playSfx('applause' | 'funfare' | 'error' | 'click' | 'proxima' | 'pop' |
+           'fizz' | 'whoosh')
+   Procura audios/sfx/<nome>.mp3. Se não existir, sintetiza com WebAudio,
+   pro app já sair funcionando sem nenhum arquivo.
+   ------------------------------------------------------------------------ */
+const SFX_NOMES = ['applause','funfare','error','click','proxima','pop','fizz','whoosh'];
+const sfxDisponivel = {};   // nome -> true se o mp3 existe
+let audioCtx = null;
+
+function ctx(){
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(AC) audioCtx = new AC();
+  }
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  return audioCtx;
+}
+
+function playSfx(nome, vol){
+  vol = (vol === undefined) ? .7 : vol;
+  if(sfxDisponivel[nome]){
+    const a = new Audio('audios/sfx/' + nome + '.mp3');
+    a.volume = vol; a.play().catch(()=>{});
+    return;
+  }
+  sintetizarSfx(nome, vol);
+}
+
+/* Síntese simples com osciladores / ruído. */
+function sintetizarSfx(nome, vol){
+  const c = ctx(); if(!c) return;
+  const t0 = c.currentTime;
+
+  const tom = (freq, dur, tipo, ganho, atraso, deslize) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = tipo || 'sine';
+    o.frequency.setValueAtTime(freq, t0 + (atraso||0));
+    if(deslize) o.frequency.exponentialRampToValueAtTime(Math.max(40,deslize), t0 + (atraso||0) + dur);
+    g.gain.setValueAtTime(0.0001, t0 + (atraso||0));
+    g.gain.exponentialRampToValueAtTime(Math.max(.001,(ganho||.2) * vol), t0 + (atraso||0) + .012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + (atraso||0) + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0 + (atraso||0)); o.stop(t0 + (atraso||0) + dur + .05);
+  };
+  const ruido = (dur, ganho, filtro, atraso) => {
+    const n = Math.floor(c.sampleRate * dur);
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/n, 1.6);
+    const s = c.createBufferSource(); s.buffer = buf;
+    const f = c.createBiquadFilter(); f.type='bandpass'; f.frequency.value = filtro||1400; f.Q.value = .8;
+    const g = c.createGain(); g.gain.value = (ganho||.25) * vol;
+    s.connect(f); f.connect(g); g.connect(c.destination);
+    s.start(t0 + (atraso||0));
+  };
+
+  switch(nome){
+    case 'applause':
+      for(let i=0;i<9;i++) ruido(.55, .10, 900 + Math.random()*2200, i*.045);
+      ruido(1.5, .16, 1700, .05);
+      break;
+    case 'funfare':
+      [523.25, 659.25, 783.99, 1046.5].forEach((f,i)=> tom(f, .30, 'triangle', .26, i*.11));
+      tom(1046.5, .55, 'square', .12, .46);
+      break;
+    case 'error':
+      tom(300, .30, 'sawtooth', .22, 0,   150);
+      tom(190, .42, 'square',   .16, .13,  90);
+      break;
+    case 'click':   tom(880, .06, 'square', .14); break;
+    case 'pop':     tom(420, .12, 'sine', .22, 0, 900); break;
+    case 'proxima': tom(560, .16, 'triangle', .18, 0, 1150); ruido(.18,.10,3000,.02); break;
+    case 'whoosh':  ruido(.42, .20, 700); break;
+    case 'fizz':    for(let i=0;i<14;i++) ruido(.09, .05, 2600 + Math.random()*2600, i*.055); break;
+    default:        tom(660, .10, 'sine', .16);
+  }
+}
+
+/* Descobre quais mp3 de efeito existem (HEAD). Falha silenciosa = sintetiza. */
+function sondarSfx(){
+  SFX_NOMES.forEach((n)=>{
+    fetch('audios/sfx/' + n + '.mp3', { method:'HEAD' })
+      .then(r => { sfxDisponivel[n] = r.ok; })
+      .catch(()=>{ sfxDisponivel[n] = false; });
+  });
+}
+
+/* ==========================================================================
+   5. STORY ENGINE — b) coreografia por tempo de áudio
+   --------------------------------------------------------------------------
+   rodarStory([ {t:4, fn:()=>{...}}, {t:12.5, fn:()=>{...}} ])
+   As cues disparam quando tempoAtual() >= t. Voltar no tempo (seek) rearma
+   as cues seguintes automaticamente.
+   ========================================================================== */
+let _story = null;
+
+function rodarStory(cues){
+  _story = {
+    cues: cues.slice().sort((a,b) => a.t - b.t),
+    feitos: new Array(cues.length).fill(false)
+  };
+}
+function limparStory(){ _story = null; }
+
+function tickStory(){
+  if(!_story) return;
+  const t = tempoAtual();
+  for(let i = 0; i < _story.cues.length; i++){
+    const c = _story.cues[i];
+    if(!_story.feitos[i] && t >= c.t){
+      _story.feitos[i] = true;
+      try { c.fn(); } catch(e){ console.error('[cue t=' + c.t + ']', e); }
+    } else if(_story.feitos[i] && t < c.t - .35){
+      _story.feitos[i] = false;               // seek para trás → rearma
+    }
+  }
+}
+
+/* i) pausaCurta — segura a narração por alguns ms (tempo dramático). */
+let _pausaTimer = null;
+function pausaCurta(ms){
+  if(!tocando) return;
+  pausarNarracao();
+  clearTimeout(_pausaTimer);
+  _pausaTimer = setTimeout(()=>{ retomarNarracao(); }, ms || 900);
+}
+
+/* ==========================================================================
+   6. EFEITOS UTILITÁRIOS — i)
+   ========================================================================== */
+
+/* ---------- Confete ---------- */
+const cvConfete = $('confete');
+const ctxConfete = cvConfete.getContext('2d');
+let confetes = [], confeteAte = 0;
+
+function festaConfete(qtd){
+  qtd = qtd || 140;
+  const paleta = ['#ff3b30','#ff9d33','#ff5a3c','#ffd166','#c86bff','#ffffff'];
+  for(let i = 0; i < qtd; i++){
+    confetes.push({
+      x: Math.random() * cvConfete.width,
+      y: -20 - Math.random() * cvConfete.height * .5,
+      vx: (Math.random() - .5) * 2.6,
+      vy: 2 + Math.random() * 4.5,
+      g: .055 + Math.random() * .05,
+      w: 6 + Math.random() * 8,
+      h: 8 + Math.random() * 12,
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - .5) * .22,
+      cor: paleta[(Math.random() * paleta.length) | 0]
+    });
+  }
+  confeteAte = performance.now() + 4200;
+}
+function tickConfete(){
+  const w = cvConfete.width, h = cvConfete.height;
+  ctxConfete.clearRect(0, 0, w, h);
+  if(!confetes.length) return;
+  for(let i = confetes.length - 1; i >= 0; i--){
+    const p = confetes[i];
+    p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+    if(p.y > h + 40){ confetes.splice(i, 1); continue; }
+    ctxConfete.save();
+    ctxConfete.translate(p.x, p.y); ctxConfete.rotate(p.rot);
+    ctxConfete.fillStyle = p.cor;
+    ctxConfete.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+    ctxConfete.restore();
+  }
+  if(performance.now() > confeteAte && confetes.length > 260) confetes.length = 260;
+}
+
+/* ---------- Tremer a tela ---------- */
+function tremerTela(){
+  const a = $('app');
+  a.classList.remove('tremendo'); void a.offsetWidth; a.classList.add('tremendo');
+  setTimeout(()=> a.classList.remove('tremendo'), 620);
+}
+function tremerVermelho(){
+  tremerTela();
+  const f = $('flashVermelho');
+  f.classList.add('on');
+  setTimeout(()=> f.classList.remove('on'), 190);
+  setTimeout(()=>{ f.classList.add('on'); setTimeout(()=> f.classList.remove('on'), 150); }, 300);
+}
+/* Flash branco curto (usado na colisão efetiva). */
+function flashBranco(){
+  const f = $('flashBranco');
+  f.classList.add('on');
+  setTimeout(()=> f.classList.remove('on'), 70);
+}
+
+/* ==========================================================================
+   7. CENA 3D — bancada de reações + arena molecular
+   ========================================================================== */
+let renderer, scene, camera, relogio;
+let raizCena = null;          // grupo raiz da cena montada
+let cenaMontada = null;       // 'bancada' | 'arena' | 'quadro'
+let bancada = null;           // referências da cena de bancada
+let arena = null;             // referências da arena molecular
+const atualizadores = [];     // funções (dt) => {} chamadas todo frame
+
+/* ---- material toon com contorno ---- */
+let mapaToon = null;
+function gradienteToon(){
+  if(mapaToon) return mapaToon;
+  /* Degraus de luz do toon shading. O shader lê o texel em .rgb, então o
+     valor precisa estar replicado nos 3 canais — por isso RGBAFormat e não
+     RedFormat (com RedFormat, G e B vêm zerados e a cena inteira fica rosa). */
+  const niveis = [46, 112, 190, 255];   // degraus: sombra funda → luz cheia
+  const dados = new Uint8Array(niveis.length * 4);
+  for(let i = 0; i < niveis.length; i++){
+    dados[i*4] = dados[i*4+1] = dados[i*4+2] = niveis[i];
+    dados[i*4+3] = 255;
+  }
+  mapaToon = new THREE.DataTexture(dados, niveis.length, 1, THREE.RGBAFormat);
+  mapaToon.minFilter = mapaToon.magFilter = THREE.NearestFilter;
+  mapaToon.needsUpdate = true;
+  return mapaToon;
+}
+function toon(cor, extra){
+  return new THREE.MeshToonMaterial(Object.assign({
+    color: cor, gradientMap: gradienteToon()
+  }, extra || {}));
+}
+function contorno(mesh, esp){
+  const m = new THREE.Mesh(
+    mesh.geometry,
+    new THREE.MeshBasicMaterial({ color:0x03100c, side:THREE.BackSide })
+  );
+  m.scale.multiplyScalar(esp || 1.045);
+  m.renderOrder = -1;
+  mesh.add(m);
+  return mesh;
+}
+function vidro(cor){
+  return new THREE.MeshPhongMaterial({
+    color: cor || CORES.vidro, transparent:true, opacity:.20,
+    shininess:110, specular:0xffffff, side:THREE.DoubleSide, depthWrite:false
+  });
+}
+
+/* ==========================================================================
+   TEXTURAS PROCEDURAIS — madeira e metal
+   --------------------------------------------------------------------------
+   Geradas em <canvas> no boot: nada de arquivo externo, o PWA continua
+   100% offline. Cada uma é criada uma única vez e reaproveitada.
+   ========================================================================== */
+
+/* Ruído barato (soma de senos) — suficiente para veio de madeira. */
+function _turb(x, y){
+  return Math.sin(x * 0.9 + Math.sin(y * 0.5) * 2.1) * 0.55
+       + Math.sin(x * 2.3 + 1.7) * Math.sin(y * 0.31) * 0.28
+       + Math.sin(x * 5.1 + y * 0.9) * 0.12;
+}
+
+let _texMadeira = null;
+function texturaMadeira(){
+  if(_texMadeira) return _texMadeira;
+  const N = 512;
+  const cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const c = cv.getContext('2d');
+  const img = c.createImageData(N, N);
+  const d = img.data;
+
+  /* Duas cores de madeira (clara e escura) que serão misturadas pelo anel. */
+  const clara  = [146, 96, 58];
+  const escura = [ 78, 44, 26];
+
+  for(let y = 0; y < N; y++){
+    for(let x = 0; x < N; x++){
+      const u = x / N * 10, v = y / N * 10;
+      /* anéis de crescimento: coordenada distorcida pela turbulência */
+      const g = u * 2.4 + _turb(u, v) * 1.9;
+      let anel = Math.abs(Math.sin(g * Math.PI));
+      anel = Math.pow(anel, 0.65);
+      /* fibras finas na direção do veio */
+      const fibra = (Math.sin(v * 190 + Math.sin(u * 7) * 3) * 0.5 + 0.5) * 0.10;
+      /* poros aleatórios */
+      const poro = Math.random() * 0.055;
+      const t = clamp(anel * 0.82 + fibra - poro, 0, 1);
+
+      const i = (y * N + x) * 4;
+      d[i]     = escura[0] + (clara[0] - escura[0]) * t;
+      d[i + 1] = escura[1] + (clara[1] - escura[1]) * t;
+      d[i + 2] = escura[2] + (clara[2] - escura[2]) * t;
+      d[i + 3] = 255;
+    }
+  }
+  c.putImageData(img, 0, 0);
+
+  _texMadeira = new THREE.CanvasTexture(cv);
+  _texMadeira.wrapS = _texMadeira.wrapT = THREE.RepeatWrapping;
+  _texMadeira.anisotropy = 8;
+  return _texMadeira;
+}
+
+/* Mapa de relevo da madeira (mesma imagem em tons de cinza serve de bump). */
+let _texMetal = null;
+function texturaMetal(){
+  if(_texMetal) return _texMetal;
+  const W = 512, H = 512;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#9aa0a6'; c.fillRect(0, 0, W, H);
+  /* metal escovado: riscos horizontais finos de brilho variável */
+  for(let i = 0; i < 5200; i++){
+    const y = Math.random() * H;
+    const x = Math.random() * W;
+    const comp = 12 + Math.random() * 120;
+    const luz = Math.random();
+    c.strokeStyle = luz > .5
+      ? 'rgba(255,255,255,' + (0.03 + Math.random() * 0.12) + ')'
+      : 'rgba(0,0,0,'       + (0.03 + Math.random() * 0.12) + ')';
+    c.lineWidth = Math.random() < .8 ? 1 : 2;
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + comp, y + (Math.random() - .5) * .8); c.stroke();
+  }
+  _texMetal = new THREE.CanvasTexture(cv);
+  _texMetal.wrapS = _texMetal.wrapT = THREE.RepeatWrapping;
+  _texMetal.anisotropy = 8;
+  return _texMetal;
+}
+
+/* --------------------------------------------------------------------------
+   Ambiente que o METAL reflete. Sem envMap, MeshStandardMaterial com
+   metalness alto renderiza praticamente preto.
+   O cubemap cru NÃO serve direto: precisa passar pelo PMREMGenerator para o
+   borrão por rugosidade funcionar. Por isso é montado em prepararAmbiente(),
+   chamado logo depois que o renderer existe.
+   -------------------------------------------------------------------------- */
+let _ambiente = null;
+function ambienteReflexo(){ return _ambiente; }
+
+function prepararAmbiente(){
+  const faces = [];
+  for(let i = 0; i < 6; i++){
+    const N = 256;
+    const cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const c = cv.getContext('2d');
+    if(i === 2){                     /* +Y — teto: as luminárias do laboratório */
+      c.fillStyle = '#6d5b55'; c.fillRect(0, 0, N, N);
+      const g = c.createRadialGradient(N*.5, N*.42, 6, N*.5, N*.42, N*.62);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(.35, '#e8d9cf');
+      g.addColorStop(.75, '#8a7169'); g.addColorStop(1, '#4a3833');
+      c.fillStyle = g; c.fillRect(0, 0, N, N);
+    } else if(i === 3){              /* -Y — piso escuro */
+      c.fillStyle = '#2a1a17'; c.fillRect(0, 0, N, N);
+    } else {                         /* laterais — horizonte claro em cima */
+      const g = c.createLinearGradient(0, 0, 0, N);
+      g.addColorStop(0, '#d9c6bd'); g.addColorStop(.34, '#8d7169');
+      g.addColorStop(.62, '#4a2f2a'); g.addColorStop(1, '#1d100e');
+      c.fillStyle = g; c.fillRect(0, 0, N, N);
+      /* faixa de luz do teto refletida na parede */
+      c.fillStyle = 'rgba(255,245,235,.30)';
+      c.fillRect(0, N * .10, N, N * .06);
+    }
+    faces.push(cv);
+  }
+  const cubo = new THREE.CubeTexture(faces);
+  cubo.needsUpdate = true;
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileCubemapShader();
+  _ambiente = pmrem.fromCubemap(cubo).texture;
+  pmrem.dispose();
+  cubo.dispose();
+}
+
+/* ---- Materiais prontos ---- */
+/* Madeira realista para o tampo e os pés da bancada. */
+function madeira(op){
+  op = Object.assign({ repeteU:2.2, repeteV:1, cor:0xffffff, rugosidade:.62 }, op || {});
+  const tex = texturaMadeira().clone();
+  tex.needsUpdate = true;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(op.repeteU, op.repeteV);
+  return new THREE.MeshStandardMaterial({
+    map: tex, bumpMap: tex, bumpScale: .012,
+    color: op.cor, roughness: op.rugosidade, metalness: .04,
+    envMap: ambienteReflexo(), envMapIntensity: .35
+  });
+}
+/* Metal escovado para tripés, bico de Bunsen e aros. */
+function metal(op){
+  op = Object.assign({ cor:0xb9bec4, rugosidade:.34, repete:1.4, intensidade:1.5 }, op || {});
+  const tex = texturaMetal().clone();
+  tex.needsUpdate = true;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(op.repete, op.repete);
+  return new THREE.MeshStandardMaterial({
+    map: tex, color: op.cor,
+    metalness: .96, roughness: op.rugosidade,
+    envMap: ambienteReflexo(), envMapIntensity: op.intensidade
+  });
+}
+
+/* --------------------------- inicialização 3D --------------------------- */
+function iniciar3D(){
+  const cv = $('cena3d');
+  renderer = new THREE.WebGLRenderer({ canvas:cv, antialias:true, alpha:false });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  /* Encoding LINEAR de propósito: assim as cores hex dos materiais aparecem
+     como foram escolhidas na paleta do CSS. Com sRGBEncoding, o gama clareia
+     demais os tons escuros e a bancada perde o clima de laboratório. */
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(CORES.bg);
+  scene.fog = new THREE.Fog(CORES.bg, 14, 34);
+
+  camera = new THREE.PerspectiveCamera(48, window.innerWidth/window.innerHeight, .1, 200);
+  relogio = new THREE.Clock();
+
+  /* Precisa do renderer pronto: gera o envMap (PMREM) usado pelos metais. */
+  prepararAmbiente();
+
+  /* Luzes — CALIBRADAS: no toon shading cada luz devolve até 1.0 de
+     irradiância e elas SOMAM. Intensidades altas estouram a cena em branco.
+     Total somado aqui fica ~1.2, que preserva os tons escuros do laboratório. */
+  scene.add(new THREE.HemisphereLight(0xffd9c9, 0x1a0a08, .32));
+  const key  = new THREE.DirectionalLight(0xfff0d8, .55); key.position.set(5, 9, 6);   scene.add(key);
+  const fill = new THREE.DirectionalLight(CORES.frio, .18); fill.position.set(-6, 4, -4); scene.add(fill);
+  const rim  = new THREE.PointLight(CORES.rubi, .35, 20);   rim.position.set(0, 5.5, -3); scene.add(rim);
+
+  irParaCamera(CAM_GERAL, false);
+  window.addEventListener('resize', aoRedimensionar);
+  aoRedimensionar();
+}
+
+function aoRedimensionar(){
+  const w = window.innerWidth, h = window.innerHeight;
+  if(renderer){ renderer.setSize(w, h, false); }
+  if(camera){ camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cvConfete.width = w * dpr; cvConfete.height = h * dpr;
+  cvConfete.style.width = w + 'px'; cvConfete.style.height = h + 'px';
+}
+
+/* -------------------- montagem / desmontagem de cenas -------------------- */
+function limparGrupo(g){
+  if(!g) return;
+  g.traverse((o)=>{
+    if(o.geometry) o.geometry.dispose();
+    if(o.material){
+      const ms = Array.isArray(o.material) ? o.material : [o.material];
+      ms.forEach((m)=>{
+        /* madeira()/metal() clonam a textura por material — libera os clones
+           para não vazar VRAM a cada remontagem de cena. O envMap e as
+           texturas-base ficam (são compartilhados e reaproveitados). */
+        ['map','bumpMap','roughnessMap','normalMap'].forEach((k)=>{
+          if(m[k] && m[k] !== _texMadeira && m[k] !== _texMetal) m[k].dispose();
+        });
+        m.dispose();
+      });
+    }
+  });
+  if(g.parent) g.parent.remove(g);
+}
+function desmontarCena(){
+  limparGrupo(raizCena);
+  raizCena = null; cenaMontada = null; bancada = null; arena = null;
+  atualizadores.length = 0;
+}
+function novaRaiz(){
+  desmontarCena();
+  raizCena = new THREE.Group();
+  scene.add(raizCena);
+  return raizCena;
+}
+
+/* -------------------------- peças reutilizáveis -------------------------- */
+
+/* Tampo + pés da bancada + parede/quadro ao fundo. */
+function criarSala(){
+  const g = new THREE.Group();
+
+  /* Tampo em MADEIRA (textura procedural com veios + bump). */
+  const tampo = new THREE.Mesh(new THREE.BoxGeometry(13, .38, 6),
+    madeira({ repeteU:3.0, repeteV:1.35, cor:0xd8b48c, rugosidade:.58 }));
+  tampo.position.set(0, -.19, 0); g.add(tampo);
+
+  /* Friso da borda: madeira mais escura e mais fechada. */
+  const borda = new THREE.Mesh(new THREE.BoxGeometry(13.2, .1, 6.2),
+    madeira({ repeteU:6, repeteV:1, cor:0x8a5d3c, rugosidade:.5 }));
+  borda.position.set(0, .01, 0); g.add(borda);
+
+  /* Pés de madeira escura. */
+  [[-5.6, -2.2], [5.6, -2.2], [-5.6, 2.2], [5.6, 2.2]].forEach(([x, z])=>{
+    const pe = new THREE.Mesh(new THREE.BoxGeometry(.3, 3.2, .3),
+      madeira({ repeteU:1, repeteV:4, cor:0x7a4e30, rugosidade:.68 }));
+    pe.position.set(x, -1.95, z); g.add(pe);
+  });
+
+  /* Parede + quadro de projeção ao fundo. */
+  const parede = new THREE.Mesh(new THREE.PlaneGeometry(30, 16), toon(0x1e0f0d));
+  parede.position.set(0, 4, -6.2); g.add(parede);
+
+  const quadro = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 5.6), toon(0x160a09));
+  quadro.position.set(0, 3.4, -6.05); g.add(quadro);
+  const moldura = new THREE.Mesh(new THREE.PlaneGeometry(11, 6.1), toon(0x4a2a26));
+  moldura.position.set(0, 3.4, -6.1); g.add(moldura);
+  g.userData.quadro = quadro;
+
+  /* Chão discreto */
+  const chao = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), toon(0x100706));
+  chao.rotation.x = -Math.PI/2; chao.position.y = -3.6; g.add(chao);
+
+  return g;
+}
+
+/* ---- Béquer com líquido, comprimido e bolhas.
+   'taxa' controla quantas bolhas nascem por segundo = VELOCIDADE visual. ---- */
+function criarBequer(op){
+  op = Object.assign({ x:0, z:0, r:.75, h:1.7, corLiq:CORES.frio, taxa:.5, po:false }, op);
+  const g = new THREE.Group();
+  g.position.set(op.x, 0, op.z);
+
+  /* copo (vidro) */
+  const copo = new THREE.Mesh(
+    new THREE.CylinderGeometry(op.r, op.r * .93, op.h, 26, 1, true), vidro());
+  copo.position.y = op.h / 2 + .06; g.add(copo);
+
+  const fundo = new THREE.Mesh(new THREE.CylinderGeometry(op.r*.93, op.r*.93, .08, 26), vidro());
+  fundo.position.y = .1; g.add(fundo);
+
+  const aro = new THREE.Mesh(new THREE.TorusGeometry(op.r, .045, 10, 34),
+    metal({ cor:0xd6dde3, rugosidade:.22, repete:3 }));
+  aro.rotation.x = Math.PI/2; aro.position.y = op.h + .06; g.add(aro);
+
+  /* líquido */
+  const alturaLiq = op.h * .68;
+  const liq = new THREE.Mesh(
+    new THREE.CylinderGeometry(op.r*.9, op.r*.87, alturaLiq, 26),
+    toon(op.corLiq, { transparent:true, opacity:.72 }));
+  liq.position.y = alturaLiq/2 + .12; g.add(liq);
+
+  /* comprimido efervescente: inteiro (disco) ou em pó (grãozinhos) */
+  const compr = new THREE.Group(); compr.position.y = .32; g.add(compr);
+  function montarComprimido(emPo){
+    while(compr.children.length) compr.remove(compr.children[0]);
+    if(emPo){
+      for(let i = 0; i < 26; i++){
+        const gr = new THREE.Mesh(new THREE.IcosahedronGeometry(.055, 0), toon(0xf3f7ee));
+        const a = Math.random() * Math.PI * 2, rr = Math.random() * op.r * .72;
+        gr.position.set(Math.cos(a)*rr, Math.random()*.14, Math.sin(a)*rr);
+        compr.add(gr);
+      }
+    } else {
+      const d = new THREE.Mesh(new THREE.CylinderGeometry(.34, .34, .13, 22), toon(0xf3f7ee));
+      compr.add(d);
+    }
+  }
+  montarComprimido(op.po);
+
+  /* pool de bolhas */
+  const geoB = new THREE.SphereGeometry(.055, 8, 6);
+  const matB = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:.85 });
+  const MAXB = 90, bolhas = [];
+  for(let i = 0; i < MAXB; i++){
+    const b = new THREE.Mesh(geoB, matB);
+    b.visible = false; b.userData.viva = false;
+    g.add(b); bolhas.push(b);
+  }
+
+  const est = { taxa: op.taxa, acumulador: 0, alturaLiq, r: op.r, po: op.po };
+
+  function nascerBolha(){
+    for(let i = 0; i < MAXB; i++){
+      const b = bolhas[i];
+      if(b.userData.viva) continue;
+      const a = Math.random()*Math.PI*2, rr = Math.random()*est.r*.72;
+      b.position.set(Math.cos(a)*rr, .3, Math.sin(a)*rr);
+      const e = .5 + Math.random()*1.1;
+      b.scale.setScalar(e);
+      b.userData.viva = true;
+      b.userData.vy = .55 + Math.random()*.8;
+      b.userData.fase = Math.random()*6.28;
+      b.visible = true;
+      return;
+    }
+  }
+  function atualizar(dt){
+    est.acumulador += est.taxa * dt * 9;
+    while(est.acumulador >= 1){ est.acumulador -= 1; nascerBolha(); }
+    for(let i = 0; i < MAXB; i++){
+      const b = bolhas[i];
+      if(!b.userData.viva) continue;
+      b.position.y += b.userData.vy * dt * (1 + est.taxa*.22);
+      b.position.x += Math.sin(performance.now()*.004 + b.userData.fase) * dt * .12;
+      if(b.position.y > alturaLiq + .1){ b.userData.viva = false; b.visible = false; }
+    }
+    /* leve balanço do líquido quando está rápido */
+    liq.scale.x = liq.scale.z = 1 + Math.sin(performance.now()*.006) * .006 * est.taxa;
+  }
+
+  return {
+    grupo:g, estado:est, atualizar,
+    setTaxa(v){ est.taxa = v; },
+    setPo(v){ est.po = v; montarComprimido(v); },
+    setCorLiquido(c){ liq.material.color.setHex(c); },
+    posicao(){ return new THREE.Vector3(op.x, op.h*.6, op.z); },
+    /* usado no quiz 3D: alvo clicável */
+    alvos: [copo, liq, fundo]
+  };
+}
+
+/* ---- Bico de Bunsen com chama animada ---- */
+function criarBunsen(x, z){
+  const g = new THREE.Group(); g.position.set(x, 0, z);
+  /* Bico de Bunsen: METAL escovado. */
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(.42, .5, .16, 24),
+    metal({ cor:0x8f9499, rugosidade:.42, repete:2 }));
+  base.position.y = .08; g.add(base);
+  const tubo = new THREE.Mesh(new THREE.CylinderGeometry(.13, .16, 1.0, 20),
+    metal({ cor:0xc2c8ce, rugosidade:.26, repete:1.2 }));
+  tubo.position.y = .6; g.add(tubo);
+  /* colar de regulagem de ar */
+  const colar = new THREE.Mesh(new THREE.CylinderGeometry(.175, .175, .17, 20),
+    metal({ cor:0x6f757b, rugosidade:.5, repete:2.4 }));
+  colar.position.y = .3; g.add(colar);
+
+  const chama = new THREE.Group(); chama.position.y = 1.08; chama.visible = false; g.add(chama);
+  const c1 = new THREE.Mesh(new THREE.ConeGeometry(.20, .82, 14),
+    new THREE.MeshBasicMaterial({ color:CORES.quente, transparent:true, opacity:.85 }));
+  c1.position.y = .41; chama.add(c1);
+  const c2 = new THREE.Mesh(new THREE.ConeGeometry(.11, .46, 12),
+    new THREE.MeshBasicMaterial({ color:CORES.frio, transparent:true, opacity:.9 }));
+  c2.position.y = .23; chama.add(c2);
+
+  const luz = new THREE.PointLight(CORES.quente, 0, 6); luz.position.y = 1.4; g.add(luz);
+
+  let ligado = false, intensidade = 0;
+  function atualizar(dt){
+    intensidade += ((ligado ? 1 : 0) - intensidade) * Math.min(1, dt * 3.2);
+    chama.visible = intensidade > .02;
+    const osc = 1 + Math.sin(performance.now()*.018) * .10;
+    chama.scale.set(intensidade*osc, intensidade*(1.9 - osc*.9) , intensidade*osc);
+    luz.intensity = intensidade * 1.6;
+  }
+  return {
+    grupo:g, atualizar,
+    ligar(v){ ligado = v; },
+    estaLigado(){ return ligado; }
+  };
+}
+
+/* ---- Suporte/tripé simples só pra compor a bancada ---- */
+function criarTripe(x, z){
+  const g = new THREE.Group(); g.position.set(x, 0, z);
+  /* Suporte universal: tudo METAL. */
+  const haste = new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,2.6,14),
+    metal({ cor:0xc6ccd2, rugosidade:.24, repete:.6 }));
+  haste.position.set(0,1.3,0); g.add(haste);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(.9,.1,.55),
+    metal({ cor:0x82888e, rugosidade:.46, repete:1.6 }));
+  base.position.y=.05; g.add(base);
+  const braco = new THREE.Mesh(new THREE.BoxGeometry(.7,.07,.07),
+    metal({ cor:0xc6ccd2, rugosidade:.24, repete:1.2 }));
+  braco.position.set(.35,2.1,0); g.add(braco);
+  /* mufa que prende o braço na haste */
+  const mufa = new THREE.Mesh(new THREE.BoxGeometry(.17,.2,.17),
+    metal({ cor:0x6b7177, rugosidade:.5, repete:2 }));
+  mufa.position.set(.05,2.1,0); g.add(mufa);
+  return g;
+}
+
+/* --------------------------------------------------------------------------
+   CENA "BANCADA"
+   prepararBancada({ tabletes:'ambos'|'um', taxaA, taxaB, poB, bunsen })
+     A = béquer da esquerda   B = béquer da direita
+   -------------------------------------------------------------------------- */
+function prepararBancada(op){
+  op = Object.assign({ taxaA:.4, taxaB:.4, poA:false, poB:false, bunsen:false }, op || {});
+  if(cenaMontada === 'bancada' && bancada){    // já montada: só reconfigura
+    bancada.A.setTaxa(op.taxaA); bancada.B.setTaxa(op.taxaB);
+    bancada.A.setPo(op.poA);     bancada.B.setPo(op.poB);
+    bancada.bunsen.ligar(op.bunsen);
+    return bancada;
+  }
+  const raiz = novaRaiz();
+  raiz.add(criarSala());
+
+  const A = criarBequer({ x:-2.6, z:.2, corLiq:CORES.frio, taxa:op.taxaA, po:op.poA });
+  const B = criarBequer({ x: 2.6, z:.2, corLiq:0xffc46b, taxa:op.taxaB, po:op.poB, r:.75 });
+  raiz.add(A.grupo); raiz.add(B.grupo);
+
+  const bunsen = criarBunsen(0, .1);
+  raiz.add(bunsen.grupo);
+  bunsen.ligar(op.bunsen);
+
+  raiz.add(criarTripe(-4.8, -.6));
+  raiz.add(criarTripe( 4.8, -.6));
+
+  /* rótulos flutuantes 3D (sprites) sobre cada béquer */
+  const rotA = criarRotulo3D('A', -2.6, 2.25, .2, '#6fb7ff');
+  const rotB = criarRotulo3D('B',  2.6, 2.25, .2, '#ff9d33');
+  raiz.add(rotA); raiz.add(rotB);
+
+  atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); bunsen.atualizar(dt); });
+
+  cenaMontada = 'bancada';
+  bancada = { A, B, bunsen, rotA, rotB, raiz };
+  return bancada;
+}
+
+/* Sprite de texto (rótulo A / B / dicas na cena). */
+function criarRotulo3D(txt, x, y, z, cor){
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+  const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(26,11,10,.85)';
+  c.beginPath(); c.roundRect ? c.roundRect(28,18,200,92,26) : c.rect(28,18,200,92); c.fill();
+  c.strokeStyle = cor; c.lineWidth = 5; c.stroke();
+  c.fillStyle = cor; c.font = 'bold 62px Segoe UI, system-ui, sans-serif';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(txt, 128, 66);
+  const tex = new THREE.CanvasTexture(cv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+  sp.scale.set(.9, .45, 1); sp.position.set(x, y, z);
+  sp.renderOrder = 5;
+  return sp;
+}
+
+/* --------------------------------------------------------------------------
+   CENA "QUADRO" — bancada vista de longe, com o painel SVG por cima.
+   Serve para as faixas que são basicamente gráfico (velocidade, ativação...).
+   -------------------------------------------------------------------------- */
+function prepararQuadro(qual){
+  if(cenaMontada !== 'quadro'){
+    const raiz = novaRaiz();
+    raiz.add(criarSala());
+    const A = criarBequer({ x:-3.4, z:.4, corLiq:CORES.frio, taxa:.35 });
+    const B = criarBequer({ x: 3.4, z:.4, corLiq:0xffc46b, taxa:.55 });
+    raiz.add(A.grupo); raiz.add(B.grupo);
+    atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); });
+    cenaMontada = 'quadro';
+    bancada = { A, B, bunsen:{ ligar(){}, atualizar(){}, estaLigado(){return false;} }, raiz };
+  }
+  if(qual) abrirGrafico(qual);
+  return bancada;
+}
+
+/* --------------------------------------------------------------------------
+   CENA "ARENA MOLECULAR"
+   Caixa transparente com esferas coloridas que se movem e colidem.
+     modo 'livre' → colisões acontecem sozinhas (efetivas e não efetivas)
+     modo 'demo'  → duas moléculas scriptadas, para mostrar UM caso
+   temperatura → multiplica a velocidade das esferas
+   -------------------------------------------------------------------------- */
+const ARENA_L = 2.1;            // meia-aresta útil da caixa
+const RAIO_MOL = .19;
+const LIMIAR_ENERGIA = 1.05;    // velocidade relativa mínima p/ colisão efetiva
+
+function prepararArena(op){
+  op = Object.assign({ n:16, temperatura:1, modo:'livre' }, op || {});
+  if(cenaMontada === 'arena' && arena){
+    arena.setTemperatura(op.temperatura);
+    arena.setN(op.n);
+    arena.modo = op.modo;
+    return arena;
+  }
+  const raiz = novaRaiz();
+  raiz.add(criarSala());
+
+  /* y = ARENA_L + folga: assim a face de baixo da caixa fica logo acima
+     do tampo da bancada, em vez de atravessá-lo. */
+  const centro = new THREE.Vector3(0, ARENA_L + .35, 0);
+  const g = new THREE.Group(); g.position.copy(centro); raiz.add(g);
+
+  /* caixa transparente + arestas */
+  const cx = new THREE.Mesh(
+    new THREE.BoxGeometry(ARENA_L*2, ARENA_L*2, ARENA_L*2),
+    new THREE.MeshPhongMaterial({ color:0xffb0a0, transparent:true, opacity:.055,
+      side:THREE.BackSide, depthWrite:false }));
+  g.add(cx);
+  const arestas = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(ARENA_L*2, ARENA_L*2, ARENA_L*2)),
+    new THREE.LineBasicMaterial({ color:0xff7a6e, transparent:true, opacity:.85 }));
+  g.add(arestas);
+
+  /* geometria/materiais compartilhados */
+  const geoM = new THREE.SphereGeometry(RAIO_MOL, 18, 14);
+  const geoNub = new THREE.SphereGeometry(RAIO_MOL*.46, 12, 10);
+  const matA = toon(CORES.frio);
+  const matB = toon(CORES.fogo);
+  const matP = toon(CORES.rubi);
+  const matNub = toon(0xffffff);
+
+  const moleculas = [];
+  let temperatura = op.temperatura;
+
+  function criarMolecula(tipo){
+    const m = new THREE.Mesh(geoM, tipo === 'A' ? matA : (tipo === 'B' ? matB : matP));
+    contorno(m, 1.10);
+    const nub = new THREE.Mesh(geoNub, matNub);   // "sítio reativo" (orientação)
+    nub.position.set(0, 0, RAIO_MOL * .92);
+    m.add(nub);
+    m.userData = {
+      tipo,
+      vel: new THREE.Vector3(),
+      giro: new THREE.Vector3((Math.random()-.5)*2, (Math.random()-.5)*2, (Math.random()-.5)*2),
+      nub
+    };
+    sortearPosicao(m);
+    sortearVelocidade(m);
+    g.add(m); moleculas.push(m);
+    return m;
+  }
+  function sortearPosicao(m){
+    const lim = ARENA_L - RAIO_MOL - .05;
+    m.position.set((Math.random()*2-1)*lim, (Math.random()*2-1)*lim, (Math.random()*2-1)*lim);
+  }
+  function sortearVelocidade(m){
+    const v = m.userData.vel;
+    v.set(Math.random()*2-1, Math.random()*2-1, Math.random()*2-1).normalize()
+     .multiplyScalar((.55 + Math.random()*.75) * temperatura);
+  }
+
+  for(let i = 0; i < op.n; i++) criarMolecula(i % 2 === 0 ? 'A' : 'B');
+
+  /* --- flashes de colisão --- */
+  const flashes = [];
+  const geoF = new THREE.SphereGeometry(.34, 14, 10);
+  function flashColisao(pos, efetiva){
+    const m = new THREE.Mesh(geoF, new THREE.MeshBasicMaterial({
+      color: efetiva ? 0xd8ff6a : CORES.cinza, transparent:true,
+      opacity: efetiva ? .95 : .35 }));
+    m.position.copy(pos); g.add(m);
+    flashes.push({ m, t:0, dur: efetiva ? .55 : .28, efetiva });
+    if(efetiva) flashBranco();
+  }
+
+  /* --- estatística exibida na legenda (opcional) --- */
+  const contagem = { efetivas:0, naoEfetivas:0 };
+
+  function colidir(a, b, dt){
+    if(!a.visible || !b.visible) return;    // demo: ignora as moléculas ocultas
+    const d = a.position.distanceTo(b.position);
+    if(d > RAIO_MOL*2) return;
+
+    const n = new THREE.Vector3().subVectors(b.position, a.position).normalize();
+    const rel = new THREE.Vector3().subVectors(a.userData.vel, b.userData.vel);
+    const vRel = rel.length();
+
+    /* separa (evita grude) */
+    const sobre = (RAIO_MOL*2 - d) * .5 + .001;
+    a.position.addScaledVector(n, -sobre);
+    b.position.addScaledVector(n,  sobre);
+
+    /* reflexão elástica simples */
+    const p = rel.dot(n);
+    if(p > 0){
+      a.userData.vel.addScaledVector(n, -p);
+      b.userData.vel.addScaledVector(n,  p);
+    }
+
+    /* --- critérios de colisão EFETIVA ---
+       1) energia: velocidade relativa acima do limiar
+       2) orientação: os "sítios reativos" (nubs) precisam estar voltados um
+          para o outro — dot entre a direção do nub e a normal do choque.  */
+    const tiposOk = (a.userData.tipo === 'A' && b.userData.tipo === 'B') ||
+                    (a.userData.tipo === 'B' && b.userData.tipo === 'A');
+    if(!tiposOk){ return; }
+
+    const dirA = a.userData.nub.getWorldPosition(new THREE.Vector3())
+                  .sub(a.getWorldPosition(new THREE.Vector3())).normalize();
+    const dirB = b.userData.nub.getWorldPosition(new THREE.Vector3())
+                  .sub(b.getWorldPosition(new THREE.Vector3())).normalize();
+    const orientOk = dirA.dot(n) > .35 && dirB.dot(n) < -.35;
+    const energiaOk = vRel >= LIMIAR_ENERGIA * temperatura * .82;
+
+    const meio = new THREE.Vector3().addVectors(a.position, b.position).multiplyScalar(.5);
+
+    if(orientOk && energiaOk){
+      contagem.efetivas++;
+      flashColisao(meio, true);
+      virarProduto(a); virarProduto(b);
+      if(Math.random() < .6) playSfx('pop', .25);
+    } else {
+      contagem.naoEfetivas++;
+      if(vRel > .8 && Math.random() < .12) flashColisao(meio, false);
+    }
+  }
+
+  function virarProduto(m){
+    m.material = matP;
+    m.userData.tipo = 'P';
+    m.userData.tProduto = 0;
+    m.scale.setScalar(1.35);
+  }
+  function voltarReagente(m){
+    m.userData.tipo = Math.random() < .5 ? 'A' : 'B';
+    m.material = m.userData.tipo === 'A' ? matA : matB;
+    m.scale.setScalar(1);
+  }
+
+  function atualizar(dt){
+    const lim = ARENA_L - RAIO_MOL;
+    for(let i = 0; i < moleculas.length; i++){
+      const m = moleculas[i], u = m.userData;
+      if(!m.visible) continue;              // demo: só as duas em cena se movem
+      m.position.addScaledVector(u.vel, dt);
+      m.rotation.x += u.giro.x * dt * .8;
+      m.rotation.y += u.giro.y * dt * .8;
+
+      ['x','y','z'].forEach((eixo)=>{
+        if(m.position[eixo] >  lim){ m.position[eixo] =  lim; u.vel[eixo] *= -1; }
+        if(m.position[eixo] < -lim){ m.position[eixo] = -lim; u.vel[eixo] *= -1; }
+      });
+
+      /* produto volta a ser reagente depois de um tempo (mantém a cena viva) */
+      if(u.tipo === 'P'){
+        u.tProduto += dt;
+        m.scale.setScalar(lerp(m.scale.x, 1, Math.min(1, dt*4)));
+        if(u.tProduto > 2.6) voltarReagente(m);
+      }
+    }
+    for(let i = 0; i < moleculas.length; i++)
+      for(let j = i+1; j < moleculas.length; j++)
+        colidir(moleculas[i], moleculas[j], dt);
+
+    for(let i = flashes.length - 1; i >= 0; i--){
+      const f = flashes[i]; f.t += dt;
+      const p = f.t / f.dur;
+      f.m.scale.setScalar(.35 + p * (f.efetiva ? 2.4 : 1.1));
+      f.m.material.opacity = (f.efetiva ? .95 : .35) * (1 - p);
+      if(p >= 1){ g.remove(f.m); f.m.material.dispose(); flashes.splice(i,1); }
+    }
+  }
+
+  atualizadores.push(atualizar);
+  cenaMontada = 'arena';
+
+  arena = {
+    grupo:g, moleculas, modo:op.modo, contagem, flashColisao,
+    setTemperatura(T){
+      const k = T / Math.max(.05, temperatura);
+      temperatura = T;
+      moleculas.forEach(m => m.userData.vel.multiplyScalar(k));
+    },
+    getTemperatura(){ return temperatura; },
+    setN(n){
+      while(moleculas.length < n) criarMolecula(moleculas.length % 2 === 0 ? 'A' : 'B');
+      while(moleculas.length > n){
+        const m = moleculas.pop(); g.remove(m);
+      }
+    },
+    /* --- demos scriptadas (usadas nas cues da faixa 'colisoes') --- */
+    demo(qual){
+      /* esconde as livres e prepara 2 moléculas em rota de colisão */
+      moleculas.forEach(m => m.visible = false);
+      const a = moleculas[0], b = moleculas[1];
+      a.visible = b.visible = true;
+      a.userData.tipo = 'A'; a.material = matA; a.scale.setScalar(1);
+      b.userData.tipo = 'B'; b.material = matB; b.scale.setScalar(1);
+      a.position.set(-1.9, 0, 0); b.position.set(1.9, 0, 0);
+      a.userData.giro.set(0,0,0); b.userData.giro.set(0,0,0);
+      if(qual === 'efetiva'){
+        /* nubs virados um para o outro + velocidade alta */
+        a.rotation.set(0,  Math.PI/2, 0);
+        b.rotation.set(0, -Math.PI/2, 0);
+        a.userData.vel.set( 1.5, 0, 0);
+        b.userData.vel.set(-1.5, 0, 0);
+      } else {
+        /* nubs para cima = orientação errada + velocidade baixa */
+        a.rotation.set(-Math.PI/2, 0, 0);
+        b.rotation.set(-Math.PI/2, 0, 0);
+        a.userData.vel.set( .55, 0, 0);
+        b.userData.vel.set(-.55, 0, 0);
+      }
+      arena.modo = 'demo';
+    },
+    livre(n){
+      moleculas.forEach(m => { m.visible = true; sortearVelocidade(m); });
+      if(n) arena.setN(n);
+      arena.modo = 'livre';
+    }
+  };
+  arena.setTemperatura(op.temperatura);
+  return arena;
+}
+
+/* ==========================================================================
+   8. CÂMERA ESFÉRICA — c)
+   irParaCamera({theta, phi, dist, target:[x,y,z]}, suave, durMs)
+     theta = giro horizontal (rad)  |  phi = inclinação (0 = topo, PI = baixo)
+     dist  = distância ao alvo      |  target = ponto observado
+   ========================================================================== */
+const CAM_GERAL   = { theta: 0.00, phi: 1.16, dist: 11.5, target:[0, 1.4, 0] };
+const CAM_BEQUER  = { theta: 0.22, phi: 1.34, dist:  4.4, target:[-2.6, 1.1, .2] };
+const CAM_BEQUER_B= { theta:-0.22, phi: 1.34, dist:  4.4, target:[ 2.6, 1.1, .2] };
+const CAM_DUPLA   = { theta: 0.00, phi: 1.30, dist:  8.2, target:[0, 1.2, .2] };
+/* A caixa da arena tem 2·ARENA_L de aresta: a câmera precisa ficar bem
+   afastada, senão moléculas passam entre a câmera e a caixa. */
+const CAM_ARENA   = { theta: 0.00, phi: 1.30, dist: 10.5, target:[0, 2.45, 0] };
+const CAM_ARENA_P = { theta: 0.34, phi: 1.34, dist:  7.6, target:[0, 2.45, 0] };
+const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  8.6, target:[0, 3.0, -2.6] };
+const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
+const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
+
+let camEstado = { theta:0, phi:1.16, dist:11.5, target:new THREE.Vector3(0,1.4,0) };
+let camTween  = null;
+
+function aplicarCamera(){
+  const s = camEstado;
+  const sp = Math.sin(s.phi), cp = Math.cos(s.phi);
+  camera.position.set(
+    s.target.x + s.dist * sp * Math.sin(s.theta),
+    s.target.y + s.dist * cp,
+    s.target.z + s.dist * sp * Math.cos(s.theta)
+  );
+  camera.lookAt(s.target);
+}
+
+function irParaCamera(pos, suave, durMs){
+  suave = (suave === undefined) ? true : suave;
+  const alvo = {
+    theta: pos.theta, phi: clamp(pos.phi, .08, Math.PI - .08), dist: pos.dist,
+    target: new THREE.Vector3().fromArray(pos.target || [0,1,0])
+  };
+  if(!suave || camLivre){
+    camEstado.theta = alvo.theta; camEstado.phi = alvo.phi; camEstado.dist = alvo.dist;
+    camEstado.target.copy(alvo.target);
+    aplicarCamera(); camTween = null; return;
+  }
+  camTween = {
+    de: { theta:camEstado.theta, phi:camEstado.phi, dist:camEstado.dist,
+          target:camEstado.target.clone() },
+    para: alvo, t0: performance.now(), dur: durMs || 1100
+  };
+}
+
+function tickCamera(){
+  if(camTween){
+    const p = clamp((performance.now() - camTween.t0) / camTween.dur, 0, 1);
+    const e = easeInOutCubic(p);
+    const d = camTween.de, a = camTween.para;
+    camEstado.theta = lerp(d.theta, a.theta, e);
+    camEstado.phi   = lerp(d.phi,   a.phi,   e);
+    camEstado.dist  = lerp(d.dist,  a.dist,  e);
+    camEstado.target.lerpVectors(d.target, a.target, e);
+    if(p >= 1) camTween = null;
+  }
+  aplicarCamera();
+}
+
+/* Órbita lenta contínua (dá vida à cena). Desligada em câmera livre. */
+let orbitaSuave = 0;
+function tickOrbita(dt){
+  if(camLivre || camTween || !orbitaSuave) return;
+  camEstado.theta += orbitaSuave * dt;
+}
+
+/* --------------------------------------------------------------------------
+   MODO CÂMERA LIVRE — clique no selo de versão para ligar/desligar.
+   Arraste = theta/phi · roda/pinça = dist · setas = mover o alvo.
+   O HUD mostra o objeto pronto para colar numa constante CAM_*.
+   -------------------------------------------------------------------------- */
+let camLivre = false;
+
+function alternarCamLivre(){
+  camLivre = !camLivre;
+  $('versao').classList.toggle('livre', camLivre);
+  $('hudCamera').classList.toggle('on', camLivre);
+  camTween = null;
+  if(camLivre){ playSfx('click'); atualizarHud(); }
+}
+function atualizarHud(){
+  if(!camLivre) return;
+  const s = camEstado;
+  $('hudCamera').innerHTML =
+    '{ theta: ' + s.theta.toFixed(2) +
+    ', phi: '  + s.phi.toFixed(2) +
+    ',\n  dist: ' + s.dist.toFixed(1) +
+    ', target:[' + s.target.x.toFixed(1) + ',' + s.target.y.toFixed(1) + ',' + s.target.z.toFixed(1) + '] }' +
+    '<button id="btnCopiarCam">copiar</button>';
+  const b = $('btnCopiarCam');
+  if(b) b.onclick = (ev)=>{
+    ev.stopPropagation();
+    const txt = '{ theta: ' + s.theta.toFixed(2) + ', phi: ' + s.phi.toFixed(2) +
+                ', dist: ' + s.dist.toFixed(1) + ', target:[' +
+                s.target.x.toFixed(1) + ',' + s.target.y.toFixed(1) + ',' + s.target.z.toFixed(1) + '] }';
+    if(navigator.clipboard) navigator.clipboard.writeText(txt).catch(()=>{});
+    b.textContent = 'copiado!';
+    setTimeout(()=>{ if($('btnCopiarCam')) $('btnCopiarCam').textContent = 'copiar'; }, 1200);
+  };
+}
+
+function ligarControlesCamLivre(){
+  const cv = $('cena3d');
+  let arrastando = false, px = 0, py = 0, dist0 = 0, pinca0 = 0;
+
+  cv.addEventListener('pointerdown', (e)=>{
+    if(!camLivre) return;
+    arrastando = true; px = e.clientX; py = e.clientY;
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('pointermove', (e)=>{
+    if(!camLivre || !arrastando) return;
+    const dx = e.clientX - px, dy = e.clientY - py;
+    px = e.clientX; py = e.clientY;
+    camEstado.theta -= dx * .006;
+    camEstado.phi    = clamp(camEstado.phi - dy * .005, .08, Math.PI - .08);
+    atualizarHud();
+  });
+  const soltar = ()=>{ arrastando = false; };
+  cv.addEventListener('pointerup', soltar);
+  cv.addEventListener('pointercancel', soltar);
+
+  cv.addEventListener('wheel', (e)=>{
+    if(!camLivre) return;
+    e.preventDefault();
+    camEstado.dist = clamp(camEstado.dist * (1 + Math.sign(e.deltaY) * .08), 1.2, 40);
+    atualizarHud();
+  }, { passive:false });
+
+  cv.addEventListener('touchstart', (e)=>{
+    if(!camLivre || e.touches.length !== 2) return;
+    pinca0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY);
+    dist0 = camEstado.dist;
+  }, { passive:true });
+  cv.addEventListener('touchmove', (e)=>{
+    if(!camLivre || e.touches.length !== 2) return;
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                         e.touches[0].clientY - e.touches[1].clientY);
+    if(pinca0 > 0) camEstado.dist = clamp(dist0 * pinca0 / d, 1.2, 40);
+    atualizarHud();
+  }, { passive:true });
+
+  window.addEventListener('keydown', (e)=>{
+    if(!camLivre) return;
+    const p = e.shiftKey ? .5 : .15;
+    if(e.key === 'ArrowUp')    camEstado.target.y += p;
+    if(e.key === 'ArrowDown')  camEstado.target.y -= p;
+    if(e.key === 'ArrowLeft')  camEstado.target.x -= p;
+    if(e.key === 'ArrowRight') camEstado.target.x += p;
+    if(e.key === 'w') camEstado.target.z -= p;
+    if(e.key === 's') camEstado.target.z += p;
+    atualizarHud();
+  });
+}
+
+/* ==========================================================================
+   9. GRÁFICOS SVG — o "coração didático"
+   --------------------------------------------------------------------------
+   abrirGrafico('conc' | 'energia' | 'mb')  → mostra o painel e o SVG certo
+   Cada gráfico tem funções pequenas para as cues chamarem no tempo exato.
+   ========================================================================== */
+const GRAFICOS = { conc:'svgConc', energia:'svgEnergia', mb:'svgMB' };
+const TITULOS_G = {
+  conc:   'Concentração × tempo',
+  energia:'Diagrama de energia',
+  mb:     'Distribuição de Maxwell-Boltzmann'
+};
+
+function abrirGrafico(qual){
+  Object.keys(GRAFICOS).forEach(k => $(GRAFICOS[k]).classList.add('g-oculto'));
+  if(!GRAFICOS[qual]) return;
+  $(GRAFICOS[qual]).classList.remove('g-oculto');
+  $('painelTitulo').textContent = TITULOS_G[qual] || '';
+  $('painelFormula').classList.remove('vis');   // limpa fórmula do gráfico anterior
+  mostrar('painelGrafico'); popar('painelGrafico');
+}
+function fecharGrafico(){ esconder('painelGrafico'); }
+
+/* Mostra/esconde um <g class="aparece"> do SVG. */
+function svgMostrar(id, v){
+  const e = $(id); if(!e) return;
+  e.classList.toggle('vis', v !== false);
+}
+/* Anima o traçado de um <path> (dash offset). */
+function desenharPath(id, d, durMs){
+  const p = $(id); if(!p) return;
+  p.setAttribute('d', d);
+  const L = p.getTotalLength ? p.getTotalLength() : 1000;
+  p.style.transition = 'none';
+  p.style.strokeDasharray  = L;
+  p.style.strokeDashoffset = L;
+  p.style.opacity = 1;
+  void p.getBoundingClientRect();
+  p.style.transition = 'stroke-dashoffset ' + ((durMs || 1400)/1000) + 's cubic-bezier(.4,.05,.2,1)';
+  p.style.strokeDashoffset = 0;
+}
+
+/* --------------------------------------------------------------------------
+   (1) CONCENTRAÇÃO × TEMPO
+   Reagente decai exponencialmente, produto sobe. Domínio: t ∈ [0,10].
+   -------------------------------------------------------------------------- */
+const CX0 = 70, CX1 = 520, CY0 = 285, CY1 = 55;   // caixa do gráfico
+function cX(t){ return CX0 + (t / 10) * (CX1 - CX0); }
+function cY(c){ return CY0 - c * (CY0 - CY1); }    // c ∈ [0,1]
+
+function pathConcentracao(k, produto){
+  let d = '';
+  for(let i = 0; i <= 60; i++){
+    const t = i / 60 * 10;
+    const c = produto ? (1 - Math.exp(-k*t)) : Math.exp(-k*t);
+    d += (i ? ' L' : 'M') + cX(t).toFixed(1) + ',' + cY(c).toFixed(1);
+  }
+  return d;
+}
+function graficoConcGrade(){
+  const g = $('cGrade');
+  if(g.childNodes.length) return;
+  let h = '';
+  for(let i = 1; i <= 5; i++){
+    const y = CY0 - i * (CY0 - CY1) / 5;
+    h += '<line class="grade" x1="' + CX0 + '" y1="' + y.toFixed(1) + '" x2="' + CX1 + '" y2="' + y.toFixed(1) + '"/>';
+  }
+  for(let i = 1; i <= 5; i++){
+    const x = CX0 + i * (CX1 - CX0) / 5;
+    h += '<line class="grade" x1="' + x.toFixed(1) + '" y1="' + CY1 + '" x2="' + x.toFixed(1) + '" y2="' + CY0 + '"/>';
+  }
+  g.innerHTML = h;
+}
+/* --- API para as cues --- */
+function concZerar(){
+  graficoConcGrade();
+  ['cReag','cProd'].forEach(id => { const p = $(id); p.setAttribute('d',''); p.style.opacity = 0; });
+  svgMostrar('cDelta', false); svgMostrar('cLegenda', false);
+}
+function concDesenharReagente(k, dur){ desenharPath('cReag', pathConcentracao(k || .35, false), dur || 1600); }
+function concDesenharProduto(k, dur){  desenharPath('cProd', pathConcentracao(k || .35, true),  dur || 1600); }
+function concMostrarDelta(){ svgMostrar('cDelta', true); }
+function concMostrarLegenda(){ svgMostrar('cLegenda', true); }
+
+/* --------------------------------------------------------------------------
+   (2) DIAGRAMA DE ENERGIA
+   Patamares: reagentes y=205, complexo y=72, produtos y=248 (exotérmica).
+   -------------------------------------------------------------------------- */
+const E_REAG = 205, E_TOPO = 72, E_PROD = 248, E_TOPO_CAT = 140;
+function pathEnergia(topo){
+  return 'M78,' + E_REAG + ' L150,' + E_REAG +
+         ' C205,' + E_REAG + ' 215,' + topo + ' 285,' + topo +
+         ' C355,' + topo   + ' 350,' + E_PROD + ' 410,' + E_PROD +
+         ' L520,' + E_PROD;
+}
+function energiaZerar(){
+  ['eCurva','eCurvaCat'].forEach(id => { const p = $(id); p.setAttribute('d',''); p.style.opacity = 0; });
+  ['eGuias','eSetaEa','eSetaEaCat','eSetaDH','eRotulos'].forEach(id => svgMostrar(id, false));
+  $('eCurva').style.strokeDasharray = '';
+}
+function energiaDesenharCurva(dur){ desenharPath('eCurva', pathEnergia(E_TOPO), dur || 1700); }
+function energiaMostrarGuias(){ svgMostrar('eGuias', true); }
+function energiaMostrarRotulos(){ svgMostrar('eRotulos', true); }
+function energiaMostrarEa(){ svgMostrar('eSetaEa', true); }
+function energiaMostrarDH(){ svgMostrar('eSetaDH', true); }
+/* microinteração: pulsa o morro da Ea */
+function energiaPulsarEa(){
+  pulsar($('eSetaEa'));
+  const c = $('eCurva');
+  c.animate(
+    [{ strokeWidth:4, filter:'drop-shadow(0 0 0 rgba(255,157,51,0))' },
+     { strokeWidth:7, filter:'drop-shadow(0 0 14px rgba(255,157,51,.95))' },
+     { strokeWidth:4, filter:'drop-shadow(0 0 0 rgba(255,157,51,0))' }],
+    { duration:1000, iterations:2, easing:'ease-in-out' });
+}
+/* catalisador: original vira tracejada, nova rota roxa nasce mais baixa */
+function energiaMostrarCatalisador(dur){
+  const orig = $('eCurva');
+  orig.style.strokeDasharray = '9 9';
+  orig.style.strokeDashoffset = 0;
+  orig.style.opacity = .45;
+  const p = $('eCurvaCat');
+  p.style.opacity = 1;
+  desenharPath('eCurvaCat', pathEnergia(E_TOPO_CAT), dur || 1500);
+}
+function energiaMostrarEaCat(){ svgMostrar('eSetaEaCat', true); pulsar($('eSetaEaCat')); }
+function energiaTirarCatalisador(){
+  const orig = $('eCurva');
+  orig.style.strokeDasharray = ''; orig.style.opacity = 1;
+  $('eCurvaCat').style.opacity = 0;
+  svgMostrar('eSetaEaCat', false);
+}
+
+/* --------------------------------------------------------------------------
+   (3) MAXWELL-BOLTZMANN
+   g(E) = sqrt(E)·e^(−E/T) normalizada pela área (por isso aquecer ACHATA e
+   desloca para a direita — comportamento fisicamente correto).
+   -------------------------------------------------------------------------- */
+const MB_X0 = 70, MB_X1 = 520, MB_Y0 = 285, MB_Y1 = 40;
+const MB_EMAX = 10, MB_EA = 5.75, MB_ESC = .55;
+function mbX(E){ return MB_X0 + (E / MB_EMAX) * (MB_X1 - MB_X0); }
+function mbY(g){ return MB_Y0 - (g / MB_ESC) * (MB_Y0 - MB_Y1); }
+function mbG(E, T){
+  if(E <= 0) return 0;
+  return Math.sqrt(E) * Math.exp(-E / T) / (0.8862269 * Math.pow(T, 1.5));
+}
+function mbPath(T){
+  let d = '';
+  for(let i = 0; i <= 110; i++){
+    const E = i / 110 * MB_EMAX;
+    d += (i ? ' L' : 'M') + mbX(E).toFixed(1) + ',' + mbY(mbG(E, T)).toFixed(1);
+  }
+  return d;
+}
+function mbPathArea(T){
+  let d = 'M' + mbX(MB_EA).toFixed(1) + ',' + MB_Y0;
+  for(let i = 0; i <= 60; i++){
+    const E = MB_EA + (i / 60) * (MB_EMAX - MB_EA);
+    d += ' L' + mbX(E).toFixed(1) + ',' + mbY(mbG(E, T)).toFixed(1);
+  }
+  d += ' L' + mbX(MB_EMAX).toFixed(1) + ',' + MB_Y0 + ' Z';
+  return d;
+}
+/* linha da Ea posicionada de acordo com MB_EA */
+function mbPosicionarEa(){
+  const x = mbX(MB_EA);
+  const g = $('mbLinhaEa');
+  g.querySelector('line').setAttribute('x1', x); g.querySelector('line').setAttribute('x2', x);
+  g.querySelector('rect').setAttribute('x', x - 43);
+  g.querySelector('text').setAttribute('x', x);
+}
+/* Escala ÚNICA de temperatura: T=1 → 25 °C (ambiente), T=2.2 → 100 °C
+   (água fervendo). Gráfico e termômetro usam esta mesma função, senão os
+   dois mostram números diferentes na mesma cena. */
+const T_AMBIENTE = 25, T_POR_UNIDADE = 62.5;
+function tempCelsius(T){ return T_AMBIENTE + (T - 1) * T_POR_UNIDADE; }
+
+let mbT = 1.0, mbTweenT = null;
+function mbDesenhar(T){
+  $('mbCurva').setAttribute('d', mbPath(T));
+  $('mbArea').setAttribute('d', mbPathArea(T));
+  $('mbTxtT').textContent = 'T = ' + Math.round(tempCelsius(T)) + ' °C';
+}
+function mbZerar(T){
+  mbT = (T === undefined) ? 1.0 : T;
+  mbPosicionarEa();
+  mbDesenhar(mbT);
+  svgMostrar('mbLinhaEa', false); svgMostrar('mbRotuloArea', false); svgMostrar('mbLegenda', false);
+  $('mbFria').style.opacity = 0;
+}
+function mbMostrarEa(){ svgMostrar('mbLinhaEa', true); svgMostrar('mbLegenda', true); }
+function mbMostrarRotuloArea(){ svgMostrar('mbRotuloArea', true); }
+/* aquecer: guarda a curva fria tracejada e anima T → alvo */
+function mbAquecer(Talvo, durMs){
+  $('mbFria').setAttribute('d', mbPath(mbT));
+  $('mbFria').style.opacity = .7;
+  mbTweenT = { de: mbT, para: Talvo, t0: performance.now(), dur: durMs || 2600 };
+}
+function tickMB(){
+  if(!mbTweenT) return;
+  const p = clamp((performance.now() - mbTweenT.t0) / mbTweenT.dur, 0, 1);
+  mbT = lerp(mbTweenT.de, mbTweenT.para, easeInOutCubic(p));
+  mbDesenhar(mbT);
+  /* termômetro acompanha a curva (microinteração pedida) */
+  setTermometro(tempCelsius(mbT));
+  if(p >= 1) mbTweenT = null;
+}
+
+/* --------------------------------------------------------------------------
+   TERMÔMETRO — sincronizado com a temperatura
+   -------------------------------------------------------------------------- */
+const T_MAX_TERM = 120;                    // topo da escala do termômetro
+function setTermometro(celsius){
+  const c = clamp(celsius, 0, T_MAX_TERM);
+  const p = c / T_MAX_TERM;                // 0..1
+  const altura = 12 + p * 52;              // px no viewBox
+  const col = $('termColuna'), bulbo = $('termBulbo');
+  if(!col) return;
+  col.setAttribute('y', (122 - altura).toFixed(1));
+  col.setAttribute('height', altura.toFixed(1));
+  const cor = corTemperatura(p);
+  col.setAttribute('fill', cor); bulbo.setAttribute('fill', cor);
+  $('termValor').textContent = Math.round(c) + ' °C';
+}
+/* azul (frio) → âmbar → vermelho (quente) */
+function corTemperatura(p){
+  const a = [0x6f,0xb7,0xff], b = [0xff,0x9d,0x33], c = [0xff,0x5a,0x3c];
+  const mix = (x, y, t) => Math.round(lerp(x, y, t));
+  let r, g, bl;
+  if(p < .5){ const t = p/.5;      r = mix(a[0],b[0],t); g = mix(a[1],b[1],t); bl = mix(a[2],b[2],t); }
+  else      { const t = (p-.5)/.5; r = mix(b[0],c[0],t); g = mix(b[1],c[1],t); bl = mix(b[2],c[2],t); }
+  return 'rgb(' + r + ',' + g + ',' + bl + ')';
+}
+
+/* ==========================================================================
+   10. QUIZ ENGINE — e)
+   --------------------------------------------------------------------------
+   DATA-DRIVEN: edite só o array QUIZZES.quiz1.itens.
+   Campos de cada item:
+     tipo        'alternativas' | 'figuras' | 'arrastar' | '3d'
+     enunciado   texto da pergunta
+     figura      HTML/SVG opcional acima das alternativas
+     alternativas[]  {txt, fig?}
+     correta     índice da alternativa certa
+     faixa       mp3 da pergunta            (opcional)
+     faixaAcerto mp3 do ramo de acerto      (opcional)
+     faixaErro   mp3 do ramo de erro        (opcional)
+     revelarEm   segundos do áudio da pergunta em que as alternativas aparecem
+     duasCol     alternativas em 2 colunas
+     cena        função que prepara a cena 3D antes de mostrar o item
+     camera      posição de câmera do item
+   ========================================================================== */
+
+/* ---- figurinhas SVG usadas nos enunciados ---- */
+const FIG_DIAGRAMA_EXO =
+  '<svg viewBox="0 0 320 170" width="320">' +
+  '<line stroke="#8a726c" stroke-width="2" x1="30" y1="150" x2="300" y2="150"/>' +
+  '<line stroke="#8a726c" stroke-width="2" x1="30" y1="150" x2="30" y2="14"/>' +
+  '<path fill="none" stroke="#ff9d33" stroke-width="4" stroke-linecap="round" ' +
+  'd="M38,96 L78,96 C110,96 116,32 156,32 C196,32 194,124 230,124 L296,124"/>' +
+  '<line stroke="#ff5a3c" stroke-width="3" x1="108" y1="96" x2="108" y2="34"/>' +
+  '<path fill="#ff5a3c" d="M108 28 l-6 12 h12 z"/>' +
+  '<text fill="#ff5a3c" font-size="15" font-weight="700" x="66" y="62">1</text>' +
+  '<line stroke="#3ddc84" stroke-width="3" x1="266" y1="96" x2="266" y2="122"/>' +
+  '<path fill="#3ddc84" d="M266 128 l-6 -12 h12 z"/>' +
+  '<text fill="#3ddc84" font-size="15" font-weight="700" x="240" y="112">2</text>' +
+  '<text fill="#6fb7ff" font-size="13" font-weight="700" x="36" y="88">reagentes</text>' +
+  '<text fill="#3ddc84" font-size="13" font-weight="700" x="296" y="144" text-anchor="end">produtos</text>' +
+  '</svg>';
+
+/* Duas rotas: sem catalisador (laranja) e com catalisador (roxa, morro menor). */
+const FIG_CATALISADOR =
+  '<svg viewBox="0 0 320 170" width="320">' +
+  '<line stroke="#8a726c" stroke-width="2" x1="30" y1="150" x2="300" y2="150"/>' +
+  '<line stroke="#8a726c" stroke-width="2" x1="30" y1="150" x2="30" y2="14"/>' +
+  '<path fill="none" stroke="#ff9d33" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 8" opacity=".6" ' +
+  'd="M38,96 L78,96 C110,96 116,26 156,26 C196,26 194,124 230,124 L296,124"/>' +
+  '<path fill="none" stroke="#c86bff" stroke-width="4" stroke-linecap="round" ' +
+  'd="M38,96 L78,96 C110,96 116,66 156,66 C196,66 194,124 230,124 L296,124"/>' +
+  '<text fill="#ff9d33" font-size="12" font-weight="700" x="156" y="18" text-anchor="middle">sem catalisador</text>' +
+  '<text fill="#c86bff" font-size="12" font-weight="700" x="234" y="62">com catalisador</text>' +
+  '</svg>';
+
+function figColisao(certa){
+  /* Duas esferas com o "sítio reativo" (bolinha branca). Na certa, os sítios
+     se encaram; na errada, apontam para cima. */
+  const nubA = certa ? 'cx="106" cy="60"' : 'cx="76" cy="34"';
+  const nubB = certa ? 'cx="134" cy="60"' : 'cx="164" cy="34"';
+  return '<svg viewBox="0 0 240 120" width="230">' +
+    '<circle cx="76"  cy="60" r="26" fill="#6fb7ff" stroke="#03100c" stroke-width="3"/>' +
+    '<circle cx="164" cy="60" r="26" fill="#ff5a3c" stroke="#03100c" stroke-width="3"/>' +
+    '<circle ' + nubA + ' r="10" fill="#fff" stroke="#03100c" stroke-width="2"/>' +
+    '<circle ' + nubB + ' r="10" fill="#fff" stroke="#03100c" stroke-width="2"/>' +
+    '<path stroke="#3ddc84" stroke-width="3" fill="none" d="M20,60 L44,60"/>' +
+    '<path fill="#3ddc84" d="M50 60 l-11 -6 v12 z"/>' +
+    '<path stroke="#3ddc84" stroke-width="3" fill="none" d="M220,60 L196,60"/>' +
+    '<path fill="#3ddc84" d="M190 60 l11 -6 v12 z"/>' +
+    '</svg>';
+}
+
+const QUIZZES = {
+  quiz1: {
+    titulo: 'Quiz — Cinética Química',
+    itens: [
+      /* ---------------- Q01 — identifique o fator (alternativas) ---------- */
+      { tipo:'alternativas',
+        enunciado:'Você tritura o comprimido efervescente antes de jogá-lo na água. Qual fator da velocidade você alterou?',
+        figura:'<div class="emoji">💊➡️🥄</div>',
+        alternativas:[
+          { txt:'Concentração dos reagentes' },
+          { txt:'Superfície de contato' },
+          { txt:'Temperatura' },
+          { txt:'Presença de catalisador' }
+        ],
+        correta:1, duasCol:true,
+        faixa:'q1a', faixaAcerto:'q1aR', faixaErro:'q1aW', revelarEm:4,
+        cena:()=> prepararBancada({ taxaA:.5, taxaB:2.0, poA:false, poB:true }),
+        camera: CAM_DUPLA },
+
+      /* ---------------- Q02 — ler o diagrama (alternativas) --------------- */
+      { tipo:'alternativas',
+        enunciado:'No diagrama abaixo, a seta 1 é a energia de ativação. Sobre a seta 2 e o tipo de reação, é correto afirmar:',
+        figura: FIG_DIAGRAMA_EXO,
+        alternativas:[
+          { txt:'Seta 2 = ΔH; reação endotérmica' },
+          { txt:'Seta 2 = ΔH; reação exotérmica' },
+          { txt:'Seta 2 = Ea inversa; reação endotérmica' },
+          { txt:'Seta 2 = energia do complexo ativado' }
+        ],
+        correta:1,
+        faixa:'q1b', faixaAcerto:'q1bR', faixaErro:'q1bW', revelarEm:5,
+        cena:()=> prepararQuadro(null),
+        camera: CAM_QUADRO },
+
+      /* ---------------- Q03 — colisão efetiva (figuras clicáveis) --------- */
+      { tipo:'figuras',
+        enunciado:'Qual das duas colisões pode formar produto?',
+        alternativas:[
+          { fig: figColisao(false), rot:'Colisão A' },
+          { fig: figColisao(true),  rot:'Colisão B' }
+        ],
+        correta:1,
+        faixa:'q1c', faixaAcerto:'q1cR', faixaErro:'q1cW', revelarEm:3.5,
+        cena:()=>{ prepararArena({ n:14, temperatura:1.15, modo:'livre' }); },
+        camera: CAM_ARENA },
+
+      /* ---------------- Q04 — arrastar e soltar --------------------------- */
+      { tipo:'arrastar',
+        enunciado:'Arraste cada situação para o fator que ela representa.',
+        alvos:[
+          { id:'conc', cab:'Concentração' },
+          { id:'sup',  cab:'Superfície' },
+          { id:'temp', cab:'Temperatura' },
+          { id:'cat',  cab:'Catalisador' }
+        ],
+        chips:[
+          { txt:'Comprimir um gás',            alvo:'conc' },
+          { txt:'Moer o giz até virar pó',      alvo:'sup'  },
+          { txt:'Levar a solução ao aquecedor', alvo:'temp' },
+          { txt:'Pingar MnO₂ na água oxigenada', alvo:'cat' }
+        ],
+        faixa:'q1d', faixaAcerto:'q1dR', faixaErro:'q1dW', revelarEm:4,
+        cena:()=> prepararBancada({ taxaA:.6, taxaB:.9 }),
+        camera: CAM_DUPLA },
+
+      /* ---------------- Q05 — o que o catalisador altera ------------------ */
+      { tipo:'alternativas',
+        enunciado:'Ao adicionar um catalisador a uma reação, o que muda?',
+        figura: FIG_CATALISADOR,
+        alternativas:[
+          { txt:'Somente a energia de ativação (Ea)' },
+          { txt:'Somente o ΔH da reação' },
+          { txt:'A Ea e também o ΔH' },
+          { txt:'Os produtos formados' }
+        ],
+        correta:0, duasCol:true,
+        faixa:'q1e', faixaAcerto:'q1eR', faixaErro:'q1eW', revelarEm:4,
+        cena:()=> prepararQuadro(null),
+        camera: CAM_QUADRO },
+
+      /* ---------------- Q06 — interação 3D -------------------------------- */
+      { tipo:'3d',
+        enunciado:'Toque no béquer em que a efervescência é mais rápida.',
+        aviso:'Toque no béquer certo na bancada 👇',
+        /* alvo3d recebe o objeto clicado e devolve true se acertou */
+        prepararCena:()=>{
+          prepararBancada({ taxaA:.35, taxaB:2.4, poA:false, poB:true });
+        },
+        checar:(qual)=> qual === 'B',
+        faixa:'q1f', faixaAcerto:'q1fR', faixaErro:'q1fW', revelarEm:3,
+        camera: CAM_DUPLA }
+    ]
+  }
+};
+
+/* ------------------------------ estado ---------------------------------- */
+let quizAtivo   = null;   // id do quiz aberto
+let quizItem    = -1;     // índice do item atual
+let quizAcertos = 0;
+let quizRespondido = false;
+let quizAcertouAtual = false;
+
+function abrirQuiz(id){
+  quizAtivo = id; quizItem = -1; quizAcertos = 0;
+  esconder('play');
+  proximoItemQuiz();
+}
+function fecharQuiz(){
+  quizAtivo = null; quizItem = -1;
+  esconder('quiz'); esconder('quiz3dAviso');
+  $('quiz').innerHTML = '';
+  alvos3D = null;
+}
+
+/* Avança para o próximo item (com transição deslizante). */
+function proximoItemQuiz(){
+  const q = QUIZZES[quizAtivo];
+  const card = $('quiz').firstElementChild;
+
+  const entrar = ()=>{
+    quizItem++;
+    if(quizItem >= q.itens.length){ terminarQuiz(); return; }
+    montarItemQuiz(q.itens[quizItem]);
+  };
+
+  if(card){
+    playSfx('proxima', .5);
+    card.classList.add('sai-direita');
+    setTimeout(entrar, 480);
+  } else {
+    entrar();
+  }
+}
+
+function terminarQuiz(){
+  fecharQuiz();
+  /* placar rápido + segue para o encerramento */
+  const total = QUIZZES.quiz1.itens.length;
+  tituloSecao(quizAcertos + ' / ' + total, quizAcertos === total
+    ? 'Gabaritou! Cinética dominada.'
+    : 'Bom trabalho — revise o que escapou no sumário.');
+  if(quizAcertos >= Math.ceil(total * .7)){ playSfx('funfare'); festaConfete(180); }
+  setTimeout(()=>{ esconder('titulo'); tocarFaixaPorId('encerramento'); }, 3200);
+}
+
+/* ------------------------- montagem de um item -------------------------- */
+function montarItemQuiz(item){
+  quizRespondido = false; quizAcertouAtual = false;
+  alvos3D = null;
+  esconder('quiz3dAviso');
+
+  /* 1) prepara a cena 3D / câmera do item */
+  if(item.cena) item.cena();
+  if(item.prepararCena) item.prepararCena();
+  if(item.camera) irParaCamera(item.camera, true, 900);
+
+  /* 2) monta o card */
+  const q = QUIZZES[quizAtivo];
+  const n = quizItem + 1, total = q.itens.length;
+  const card = document.createElement('div');
+  card.className = 'quiz-card entra-esquerda';
+  card.innerHTML =
+    '<div class="quiz-topo">' +
+      '<span class="quiz-passo">Questão ' + n + ' de ' + total + '</span>' +
+      '<span class="quiz-pontos">acertos: ' + quizAcertos + '</span>' +
+    '</div>' +
+    '<div class="quiz-barra"><i style="width:' + ((n-1)/total*100) + '%"></i></div>' +
+    (item.figura ? '<div class="quiz-figura">' + item.figura + '</div>' : '') +
+    '<p class="quiz-enunciado">' + item.enunciado + '</p>' +
+    '<div id="quizCorpo"></div>' +
+    '<div id="quizDica"></div>';
+
+  const cx = $('quiz');
+  cx.innerHTML = ''; cx.appendChild(card);
+  mostrar('quiz');
+
+  /* dispara a animação de entrada pela esquerda */
+  requestAnimationFrame(()=>{
+    card.classList.remove('entra-esquerda');
+    requestAnimationFrame(()=>{ card.querySelector('.quiz-barra i').style.width = (n/total*100) + '%'; });
+  });
+
+  /* 3) corpo conforme o tipo */
+  const corpo = $('quizCorpo');
+  if(item.tipo === 'figuras')       montarFiguras(item, corpo);
+  else if(item.tipo === 'arrastar') montarArrastar(item, corpo);
+  else if(item.tipo === '3d')       montar3D(item, corpo);
+  else                              montarAlternativas(item, corpo);
+
+  /* 4) toca a faixa da pergunta e revela as opções no tempo certo */
+  /* Sem legenda global aqui: o enunciado já está no card, e o overlay
+     #legenda (z-index menor) apareceria por trás dele. */
+  if(item.faixa && idxFaixa(item.faixa) >= 0){
+    tocarFaixaPorId(item.faixa);
+    esconder('legenda');
+    rodarStory([{ t: item.revelarEm || 3, fn: revelarOpcoes }]);
+  } else {
+    revelarOpcoes();
+  }
+}
+
+/* Revela as alternativas escalonadamente. */
+function revelarOpcoes(){
+  const alvos = $$('#quizCorpo .alt, #quizCorpo .fig-alt, #quizCorpo .chip');
+  alvos.forEach((el, i)=> setTimeout(()=> el.classList.add('vis'), i * 110));
+  const av = $('quiz3dTxt');
+  if(av && av.dataset.pendente === '1'){ mostrar('quiz3dAviso'); av.dataset.pendente = '0'; }
+}
+
+/* ---------------------------- tipo: alternativas ------------------------ */
+function montarAlternativas(item, corpo){
+  const letras = 'ABCDEFGH';
+  const div = document.createElement('div');
+  div.className = 'quiz-alts' + (item.duasCol ? ' duas-col' : '');
+  item.alternativas.forEach((a, i)=>{
+    const b = document.createElement('button');
+    b.className = 'alt'; b.type = 'button';
+    b.innerHTML = '<span class="letra">' + letras[i] + '</span><span>' + a.txt + '</span>';
+    b.onclick = ()=> responder(item, i, b, div);
+    div.appendChild(b);
+  });
+  corpo.appendChild(div);
+}
+
+/* ---------------------------- tipo: figuras ----------------------------- */
+function montarFiguras(item, corpo){
+  const div = document.createElement('div');
+  div.className = 'quiz-figs';
+  item.alternativas.forEach((a, i)=>{
+    const b = document.createElement('button');
+    b.className = 'fig-alt'; b.type = 'button';
+    b.innerHTML = a.fig + '<div class="rot">' + (a.rot || ('Opção ' + (i+1))) + '</div>';
+    b.onclick = ()=> responder(item, i, b, div);
+    div.appendChild(b);
+  });
+  corpo.appendChild(div);
+}
+
+/* -------------------- resposta padrão (acerto / erro) -------------------- */
+function responder(item, escolha, botao, container){
+  if(quizRespondido) return;
+  quizRespondido = true;
+
+  const certo = (escolha === item.correta);
+  const filhos = Array.prototype.slice.call(container.children);
+  /* '.vis' é o que dá opacity:1. Se a resposta chegar antes de revelarOpcoes()
+     terminar (áudio curto, toque rápido), a alternativa marcada ficaria
+     invisível. Garantimos a revelação de todas antes de marcar. */
+  filhos.forEach(f => { f.classList.add('vis'); f.classList.add('travada'); });
+
+  if(certo){
+    /* --- ACERTO: aplausos + fanfarra + confete --- */
+    quizAcertos++; quizAcertouAtual = true;
+    botao.classList.add('certa');
+    filhos.forEach(f => { if(f !== botao) f.classList.add('apagada'); });
+    playSfx('applause'); playSfx('funfare');
+    festaConfete(150);
+    ramoQuiz(item, true);
+  } else {
+    /* --- ERRO: som de erro + tremer vermelho + marcar a correta --- */
+    botao.classList.add('errada');
+    if(filhos[item.correta]) filhos[item.correta].classList.add('certa');
+    playSfx('error');
+    tremerVermelho();
+    ramoQuiz(item, false);
+  }
+}
+
+/* Toca a faixa do ramo (acerto/erro) e escreve o comentário DENTRO do card
+   (em #quizDica). Usar a legenda global aqui a deixaria atrás do card. */
+function ramoQuiz(item, acertou){
+  const id = acertou ? item.faixaAcerto : item.faixaErro;
+  const dica = $('quizDica');
+  if(dica) dica.className = acertou ? 'dica-ok' : 'dica-erro';
+
+  if(id && idxFaixa(id) >= 0){
+    setTimeout(()=>{
+      tocarFaixaPorId(id, { manterQuiz:true });
+      const f = faixaPorId(id);
+      rodarStory([{ t:.1, fn:()=> digitar('quizDica', (acertou ? '✔ ' : '✘ ') + f.texto,
+                                          .3, Math.max(3, (f.dur || 8) - 1.5)) }]);
+    }, acertou ? 900 : 700);
+  } else {
+    setTimeout(proximoItemQuiz, 1800);
+  }
+}
+
+/* ---------------------------- tipo: arrastar ---------------------------- */
+function montarArrastar(item, corpo){
+  const alvosHtml = item.alvos.map(a =>
+    '<div class="dnd-alvo" data-alvo="' + a.id + '"><span class="cab">' + a.cab + '</span></div>').join('');
+  corpo.innerHTML =
+    '<div class="dnd-alvos">' + alvosHtml + '</div>' +
+    '<div class="dnd-chips" id="dndChips"></div>' +
+    '<button class="quiz-acao" id="dndConferir" disabled>Conferir</button>';
+
+  const bandeja = $('dndChips');
+  /* embaralha para não decorar a ordem */
+  const chips = item.chips.slice().sort(()=> Math.random() - .5);
+  chips.forEach((c)=>{
+    const el = document.createElement('div');
+    el.className = 'chip'; el.textContent = c.txt; el.dataset.alvo = c.alvo;
+    bandeja.appendChild(el);
+    ligarArrasto(el, item);
+  });
+
+  $('dndConferir').onclick = ()=> conferirArrastar(item, corpo);
+}
+
+function ligarArrasto(chip, item){
+  let arrastando = false, offX = 0, offY = 0, origem = null;
+
+  chip.addEventListener('pointerdown', (e)=>{
+    if(quizRespondido) return;
+    arrastando = true; origem = chip.parentElement;
+    const r = chip.getBoundingClientRect();
+    offX = e.clientX - r.left; offY = e.clientY - r.top;
+    chip.classList.add('arrastando');
+    chip.style.left = r.left + 'px'; chip.style.top = r.top + 'px';
+    chip.style.width = r.width + 'px';
+    document.body.appendChild(chip);
+    chip.setPointerCapture(e.pointerId);
+    playSfx('click', .35);
+  });
+
+  chip.addEventListener('pointermove', (e)=>{
+    if(!arrastando) return;
+    chip.style.left = (e.clientX - offX) + 'px';
+    chip.style.top  = (e.clientY - offY) + 'px';
+    const sob = alvoSobPonteiro(e.clientX, e.clientY);
+    $$('.dnd-alvo').forEach(a => a.classList.toggle('sobre', a === sob));
+  });
+
+  const soltar = (e)=>{
+    if(!arrastando) return;
+    arrastando = false;
+    chip.classList.remove('arrastando');
+    chip.style.left = chip.style.top = chip.style.width = '';
+    const sob = alvoSobPonteiro(e.clientX, e.clientY);
+    $$('.dnd-alvo').forEach(a => a.classList.remove('sobre'));
+    if(sob){
+      chip.classList.add('encaixado');
+      sob.appendChild(chip);
+      playSfx('pop', .35);
+    } else {
+      chip.classList.remove('encaixado');
+      (origem && origem.classList.contains('dnd-alvo') ? $('dndChips') : ($('dndChips') || origem)).appendChild(chip);
+    }
+    const faltam = $('dndChips').children.length;
+    const bt = $('dndConferir'); if(bt) bt.disabled = faltam > 0;
+  };
+  chip.addEventListener('pointerup', soltar);
+  chip.addEventListener('pointercancel', soltar);
+}
+
+function alvoSobPonteiro(x, y){
+  const els = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
+  for(let i = 0; i < els.length; i++){
+    const a = els[i] && els[i].closest ? els[i].closest('.dnd-alvo') : null;
+    if(a) return a;
+  }
+  return null;
+}
+
+function conferirArrastar(item, corpo){
+  if(quizRespondido) return;
+  quizRespondido = true;
+
+  let todosOk = true;
+  $$('.dnd-alvo', corpo).forEach((alvo)=>{
+    const dentro = $$('.chip', alvo);
+    const ok = dentro.length === 1 && dentro[0].dataset.alvo === alvo.dataset.alvo;
+    alvo.classList.add(ok ? 'ok' : 'nok');
+    if(!ok) todosOk = false;
+  });
+  $('dndConferir').disabled = true;
+  $$('.chip', corpo).forEach(c => c.style.pointerEvents = 'none');
+
+  if(todosOk){
+    quizAcertos++; quizAcertouAtual = true;
+    playSfx('applause'); playSfx('funfare'); festaConfete(150);
+    ramoQuiz(item, true);
+  } else {
+    playSfx('error'); tremerVermelho();
+    /* mostra o gabarito movendo cada chip para o alvo certo */
+    setTimeout(()=>{
+      item.chips.forEach((c)=>{
+        const chip = $$('.chip', corpo).filter(el => el.textContent === c.txt)[0];
+        const alvo = $$('.dnd-alvo', corpo).filter(a => a.dataset.alvo === c.alvo)[0];
+        if(chip && alvo){ alvo.appendChild(chip); alvo.classList.remove('nok'); alvo.classList.add('ok'); }
+      });
+    }, 900);
+    ramoQuiz(item, false);
+  }
+}
+
+/* ------------------------------ tipo: 3D -------------------------------- */
+/* Guarda o que é clicável na cena enquanto um item '3d' está ativo. */
+let alvos3D = null;
+
+function montar3D(item, corpo){
+  corpo.innerHTML = '';
+  $('quiz3dTxt').textContent = item.aviso || 'Toque no objeto certo na cena';
+  $('quiz3dTxt').dataset.pendente = '1';
+
+  /* mapeia os meshes clicáveis dos dois béqueres */
+  alvos3D = { item, mapa: [] };
+  if(bancada && bancada.A && bancada.B){
+    bancada.A.alvos.forEach(o => alvos3D.mapa.push({ obj:o, chave:'A' }));
+    bancada.B.alvos.forEach(o => alvos3D.mapa.push({ obj:o, chave:'B' }));
+  }
+}
+
+let raycaster = null, ponteiro = null;
+
+function cliqueNaCena(ev){
+  if(camLivre) return;
+  if(!alvos3D || quizRespondido) return;
+  if(!raycaster){ raycaster = new THREE.Raycaster(); ponteiro = new THREE.Vector2(); }
+
+  ponteiro.x =  (ev.clientX / window.innerWidth)  * 2 - 1;
+  ponteiro.y = -(ev.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(ponteiro, camera);
+
+  const objetos = alvos3D.mapa.map(m => m.obj);
+  const hits = raycaster.intersectObjects(objetos, true);
+  if(!hits.length) return;
+
+  /* sobe na hierarquia até achar um objeto mapeado */
+  let alvo = hits[0].object, chave = null;
+  while(alvo && !chave){
+    const m = alvos3D.mapa.filter(x => x.obj === alvo)[0];
+    if(m) chave = m.chave; else alvo = alvo.parent;
+  }
+  if(!chave) return;
+
+  responder3D(alvos3D.item, chave);
+}
+
+function responder3D(item, chave){
+  quizRespondido = true;
+  esconder('quiz3dAviso');
+  const certo = item.checar(chave);
+  const bq = (chave === 'A') ? bancada.A : bancada.B;
+
+  if(certo){
+    quizAcertos++; quizAcertouAtual = true;
+    playSfx('applause'); playSfx('funfare'); festaConfete(150); flashBranco();
+    irParaCamera(chave === 'A' ? CAM_BEQUER : CAM_BEQUER_B, true, 800);
+    ramoQuiz(item, true);
+  } else {
+    playSfx('error'); tremerVermelho();
+    /* destaca o correto */
+    const certoBq = item.checar('A') ? bancada.A : bancada.B;
+    irParaCamera(item.checar('A') ? CAM_BEQUER : CAM_BEQUER_B, true, 900);
+    certoBq.setTaxa(3.2);
+    ramoQuiz(item, false);
+  }
+}
+
+/* Fluxo do quiz quando uma faixa termina (ramos R/W e pergunta). */
+function quizAoTerminarFaixa(id){
+  const item = QUIZZES[quizAtivo].itens[quizItem];
+  if(!item) return;
+
+  /* fim do áudio da PERGUNTA → não faz nada: espera a resposta */
+  if(id === item.faixa){
+    revelarOpcoes();            // garante que apareceram
+    return;
+  }
+  /* fim do ramo de ACERTO ou de ERRO → próxima questão */
+  if(id === item.faixaAcerto || id === item.faixaErro){
+    esconder('legenda');
+    proximoItemQuiz();
+    return;
+  }
+}
+
+/* ############################################################################
+   11. EVENTOS — COREOGRAFIA DE CADA FAIXA
+   ----------------------------------------------------------------------------
+   >>> É AQUI QUE VOCÊ MEXE quando pedir "na faixa X, em 8s faz Y". <<<
+   Cada entrada é: id-da-faixa -> função que chama rodarStory([...cues]).
+   Cada cue = { t: segundos do áudio, fn: () => { ...ação... } }.
+   ########################################################################## */
+const EVENTOS = {
+
+  /* ------------------------------------------------------------------ */
+  /* 1. INTRO — o que a Cinética estuda                                  */
+  /* ------------------------------------------------------------------ */
+  intro: () => rodarStory([
+    { t:0.0,  fn:()=>{ prepararBancada({ taxaA:.25, taxaB:.25 });
+                       irParaCamera(CAM_GERAL, false); orbitaSuave = .035; } },
+    { t:0.4,  fn:()=> tituloSecao('Cinética Química', 'por que umas reações são rápidas e outras lentas?') },
+    { t:6.0,  fn:()=> esconder('titulo') },
+    { t:7.0,  fn:()=> legenda(FAIXAS[0].texto, 7, 20) },
+    { t:11.0, fn:()=> irParaCamera(CAM_DUPLA, true, 1600) },
+    { t:14.0, fn:()=>{ bancada.A.setTaxa(.18); bancada.B.setTaxa(2.4); playSfx('fizz', .35); } },
+    { t:17.0, fn:()=> mostrarBadges([{ txt:'A — lenta', cor:'frio' }, { txt:'B — rápida', cor:'quente' }]) },
+    { t:22.0, fn:()=>{ esconder('badges'); irParaCamera(CAM_BEQUER_B, true, 1400); } },
+    { t:26.0, fn:()=> legenda('A Cinética estuda a VELOCIDADE das reações — e como controlá-la.', 26, 32) },
+    { t:31.0, fn:()=>{ irParaCamera(CAM_GERAL, true, 1600); orbitaSuave = 0; } }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 2. VELOCIDADE — gráfico concentração × tempo                        */
+  /* ------------------------------------------------------------------ */
+  velocidade: () => rodarStory([
+    { t:0.0,  fn:()=>{ prepararQuadro(null); irParaCamera(CAM_QUADRO, true, 1200); orbitaSuave = 0; } },
+    { t:0.4,  fn:()=> tituloSecao('Velocidade de reação', 'quanto a concentração muda por segundo') },
+    { t:4.0,  fn:()=>{ esconder('titulo'); concZerar(); abrirGrafico('conc'); } },
+    { t:6.0,  fn:()=> concDesenharReagente(.35, 1800) },
+    { t:11.0, fn:()=>{ concDesenharProduto(.35, 1800); concMostrarLegenda(); } },
+    { t:17.0, fn:()=> legenda('O reagente cai, o produto sobe — na mesma reação.', 17, 23) },
+    { t:23.0, fn:()=>{ mostrarFormula('v = ΔC / Δt'); playSfx('pop', .4); } },
+    { t:26.0, fn:()=> concMostrarDelta() },
+    { t:31.0, fn:()=> pulsarFormula() },
+    { t:34.0, fn:()=> legenda('Unidade usual: mol · L⁻¹ · s⁻¹ (ou por minuto).', 34, 40) },
+    { t:40.0, fn:()=> esconderFormula() }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 3. COLISÕES — arena molecular                                       */
+  /* ------------------------------------------------------------------ */
+  colisoes: () => rodarStory([
+    { t:0.0,  fn:()=>{ prepararArena({ n:16, temperatura:1.0, modo:'livre' });
+                       irParaCamera(CAM_ARENA, false); orbitaSuave = .05; } },
+    { t:0.4,  fn:()=> tituloSecao('Teoria das colisões', 'colidir é necessário — mas não é suficiente') },
+    { t:5.0,  fn:()=> esconder('titulo') },
+    { t:6.0,  fn:()=> legenda('Para reagir, as moléculas precisam se chocar.', 6, 12) },
+    { t:12.0, fn:()=>{ irParaCamera(CAM_ARENA_P, true, 1400); } },
+
+    /* --- demo 1: colisão NÃO efetiva (cinza, ricocheteia) --- */
+    { t:16.0, fn:()=>{ arena.demo('naoEfetiva');
+                       legenda('Orientação errada + pouca energia → elas só ricocheteiam.', 16, 23); } },
+    { t:20.0, fn:()=> mostrarBadges([{ txt:'colisão NÃO efetiva', cor:'cinza' }]) },
+    { t:23.5, fn:()=> esconder('badges') },
+
+    /* --- demo 2: colisão EFETIVA (flash verde, vira produto) --- */
+    { t:25.0, fn:()=>{ arena.demo('efetiva');
+                       legenda('Orientação certa + energia suficiente → nasce produto!', 25, 32); } },
+    { t:29.0, fn:()=>{ mostrarBadges([{ txt:'colisão EFETIVA', cor:'rubi' }]); } },
+    { t:33.0, fn:()=>{ esconder('badges'); arena.livre(18); irParaCamera(CAM_ARENA, true, 1400); } },
+    { t:36.0, fn:()=> mostrarBadges([
+                       { txt:'1) ORIENTAÇÃO adequada', cor:'frio' },
+                       { txt:'2) ENERGIA ≥ Ea', cor:'quente' }]) },
+    { t:42.0, fn:()=>{ esconder('badges'); orbitaSuave = 0; } }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 4. ATIVAÇÃO — diagrama de energia                                   */
+  /* ------------------------------------------------------------------ */
+  ativacao: () => rodarStory([
+    { t:0.0,  fn:()=>{ prepararQuadro(null); irParaCamera(CAM_QUADRO, true, 1200); orbitaSuave = 0;
+                       energiaZerar(); } },
+    { t:0.4,  fn:()=> tituloSecao('Energia de ativação', 'o morro que toda reação precisa subir') },
+    { t:4.0,  fn:()=>{ esconder('titulo'); abrirGrafico('energia'); } },
+    { t:6.0,  fn:()=> energiaMostrarGuias() },
+    { t:8.0,  fn:()=> energiaDesenharCurva(1800) },       /* <- desenha a curva */
+    { t:12.0, fn:()=> energiaMostrarRotulos() },
+    { t:13.0, fn:()=>{ energiaMostrarEa(); playSfx('pop', .4); } },   /* <- seta da Ea */
+    { t:17.0, fn:()=> legenda('Ea é a energia mínima para chegar ao complexo ativado.', 17, 24) },
+    { t:20.7, fn:()=> energiaPulsarEa() },                /* <- pulso pedido */
+    { t:26.0, fn:()=> mostrarBadges([{ txt:'complexo ativado = topo do morro', cor:'fogo' }]) },
+    { t:31.0, fn:()=>{ esconder('badges'); energiaMostrarDH(); } },
+    { t:34.0, fn:()=> legenda('Produtos abaixo dos reagentes: ΔH < 0 → reação EXOTÉRMICA.', 34, 42) },
+    { t:38.0, fn:()=> mostrarBadges([{ txt:'ΔH < 0 · exotérmica', cor:'rubi' }]) },
+    { t:44.0, fn:()=> esconder('badges') }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 5. FATOR CONCENTRAÇÃO                                               */
+  /*    (a partir daqui a bancada é PERSISTENTE entre as faixas)         */
+  /* ------------------------------------------------------------------ */
+  fator_conc: () => rodarStory([
+    { t:0.0,  fn:()=>{ fecharGrafico(); prepararBancada({ taxaA:.4, taxaB:.4, poA:false, poB:false });
+                       irParaCamera(CAM_DUPLA, true, 1300); } },
+    { t:0.4,  fn:()=> tituloSecao('Fator 1 — Concentração', 'mais partículas, mais colisões') },
+    { t:4.0,  fn:()=> esconder('titulo') },
+    { t:5.0,  fn:()=> legenda(faixaPorId('fator_conc').texto, 5, 13) },
+    { t:9.0,  fn:()=>{ bancada.B.setTaxa(2.2); bancada.B.setCorLiquido(0x9df06a); playSfx('fizz', .4); } },
+    { t:12.0, fn:()=> mostrarBadges([{ txt:'A — diluído', cor:'frio' }, { txt:'B — concentrado', cor:'rubi' }]) },
+    { t:17.0, fn:()=>{ esconder('badges'); irParaCamera(CAM_BEQUER_B, true, 1300); } },
+    { t:21.0, fn:()=> mostrarFormula('↑ [reagente]  ⇒  ↑ v') },
+    { t:27.0, fn:()=>{ esconderFormula(); irParaCamera(CAM_DUPLA, true, 1300); } },
+    { t:30.0, fn:()=> legenda('Em gases, comprimir também aumenta a concentração.', 30, 34) }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 6. FATOR SUPERFÍCIE DE CONTATO                                      */
+  /* ------------------------------------------------------------------ */
+  fator_superficie: () => rodarStory([
+    { t:0.0,  fn:()=>{ prepararBancada({ taxaA:.35, taxaB:.35, poA:false, poB:false });
+                       bancada.B.setCorLiquido(0xffc46b); irParaCamera(CAM_DUPLA, true, 1200); } },
+    { t:0.4,  fn:()=> tituloSecao('Fator 2 — Superfície de contato', 'pó reage mais rápido que pedaço') },
+    { t:4.0,  fn:()=> esconder('titulo') },
+    { t:5.0,  fn:()=> legenda(faixaPorId('fator_superficie').texto, 5, 15) },
+    { t:10.0, fn:()=>{ irParaCamera(CAM_BEQUER_B, true, 1200); } },
+    { t:13.0, fn:()=>{ bancada.B.setPo(true); playSfx('pop', .5); } },   /* tritura! */
+    { t:14.5, fn:()=>{ bancada.B.setTaxa(2.8); playSfx('fizz', .5); } },
+    { t:18.0, fn:()=>{ irParaCamera(CAM_DUPLA, true, 1300);
+                       mostrarBadges([{ txt:'A — comprimido inteiro', cor:'frio' },
+                                      { txt:'B — em pó', cor:'quente' }]); } },
+    { t:25.0, fn:()=>{ esconder('badges'); mostrarFormula('↑ área exposta  ⇒  ↑ v'); } },
+    { t:31.0, fn:()=> esconderFormula() },
+    { t:33.0, fn:()=> legenda('A massa é a mesma — o que mudou foi a área exposta.', 33, 36) }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 7. FATOR TEMPERATURA — bunsen + Maxwell-Boltzmann + termômetro       */
+  /* ------------------------------------------------------------------ */
+  fator_temp: () => rodarStory([
+    { t:0.0,  fn:()=>{ prepararBancada({ taxaA:.4, taxaB:.4, poA:false, poB:false, bunsen:false });
+                       irParaCamera(CAM_BUNSEN, true, 1200); setTermometro(25); } },
+    { t:0.4,  fn:()=> tituloSecao('Fator 3 — Temperatura', 'a mais poderosa das alavancas') },
+    { t:4.0,  fn:()=> esconder('titulo') },
+    { t:5.0,  fn:()=>{ mostrar('termometro'); popar('termometro'); } },
+    { t:7.0,  fn:()=>{ bancada.bunsen.ligar(true); playSfx('whoosh', .5);
+                       legenda('Ligando o bico de Bunsen…', 7, 11); } },
+    { t:9.0,  fn:()=> aquecerBancada(90, 5000) },          /* termômetro + bolhas */
+    { t:13.0, fn:()=>{ irParaCamera(CAM_QUADRO, true, 1500); mbZerar(1.0); abrirGrafico('mb'); } },
+    { t:16.0, fn:()=>{ mbMostrarEa(); playSfx('pop', .4); } },
+    { t:19.0, fn:()=> legenda('Só as moléculas à direita da linha têm energia ≥ Ea.', 19, 25) },
+    { t:22.0, fn:()=> mbMostrarRotuloArea() },
+    { t:27.0, fn:()=>{ mbAquecer(2.2, 3200); playSfx('whoosh', .4); } },  /* curva desloca */
+    { t:31.0, fn:()=> legenda('Aquecendo, a curva se desloca e a área além da Ea EXPLODE.', 31, 38) },
+    { t:36.0, fn:()=> mostrarFormula('↑ T  ⇒  ↑↑ v') },
+    { t:41.0, fn:()=>{ esconderFormula(); esconder('termometro'); } }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 8. FATOR CATALISADOR — nova rota no diagrama                        */
+  /* ------------------------------------------------------------------ */
+  fator_catalisador: () => rodarStory([
+    { t:0.0,  fn:()=>{ prepararQuadro(null); irParaCamera(CAM_QUADRO, true, 1300);
+                       energiaZerar(); abrirGrafico('energia'); } },
+    { t:0.4,  fn:()=> tituloSecao('Fator 4 — Catalisador', 'um atalho por cima do morro') },
+    { t:4.0,  fn:()=> esconder('titulo') },
+    { t:5.0,  fn:()=>{ energiaMostrarGuias(); energiaDesenharCurva(1500); } },
+    { t:8.0,  fn:()=>{ energiaMostrarRotulos(); energiaMostrarEa(); } },
+    { t:11.0, fn:()=> legenda('Sem catalisador, todo mundo precisa subir este morro.', 11, 17) },
+
+    /* --- momento dramático: o morro encolhe e as bolhas aceleram --- */
+    { t:18.0, fn:()=>{ playSfx('funfare', .35); energiaMostrarCatalisador(1400);
+                       if(bancada){ bancada.A.setTaxa(2.6); bancada.B.setTaxa(3.0); }
+                       playSfx('fizz', .45); } },
+    { t:20.5, fn:()=>{ energiaMostrarEaCat(); tremerTela(); } },
+    { t:23.0, fn:()=> mostrarBadges([{ txt:'nova rota · Ea menor', cor:'roxo' }]) },
+    { t:27.0, fn:()=>{ esconder('badges'); energiaMostrarDH(); } },
+    { t:29.0, fn:()=> legenda('Repare: o ΔH continua EXATAMENTE o mesmo.', 29, 36) },
+    { t:33.0, fn:()=> pulsar($('eSetaDH')) },
+    { t:37.0, fn:()=> mostrarBadges([{ txt:'não é consumido', cor:'roxo' },
+                                     { txt:'não altera o ΔH', cor:'rubi' }]) },
+    { t:44.0, fn:()=> esconder('badges') }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 9. CHAMADA DO QUIZ                                                  */
+  /* ------------------------------------------------------------------ */
+  quiz1: () => rodarStory([
+    { t:0.0, fn:()=>{ fecharGrafico(); prepararBancada({ taxaA:.8, taxaB:1.2 });
+                      irParaCamera(CAM_DUPLA, true, 1100); } },
+    { t:0.3, fn:()=>{ tituloSecao('Hora do Quiz', '6 desafios de Cinética'); playSfx('funfare', .5); } },
+    { t:6.0, fn:()=> esconder('titulo') }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 10. ENCERRAMENTO                                                     */
+  /* ------------------------------------------------------------------ */
+  encerramento: () => rodarStory([
+    { t:0.0,  fn:()=>{ fecharGrafico(); prepararBancada({ taxaA:1.4, taxaB:1.9, poB:true });
+                       irParaCamera(CAM_GERAL, true, 1600); orbitaSuave = .04; } },
+    { t:0.4,  fn:()=> tituloSecao('Recapitulando', 'você já domina o essencial') },
+    { t:5.0,  fn:()=>{ esconder('titulo');
+                       mostrarBadges([{ txt:'v = ΔC/Δt', cor:'rubi' },
+                                      { txt:'colisão efetiva', cor:'frio' },
+                                      { txt:'Ea + complexo ativado', cor:'quente' }]); } },
+    { t:11.0, fn:()=> mostrarBadges([{ txt:'concentração', cor:'frio' },
+                                     { txt:'superfície', cor:'rubi' },
+                                     { txt:'temperatura', cor:'fogo' },
+                                     { txt:'catalisador', cor:'roxo' }]) },
+    { t:18.0, fn:()=>{ esconder('badges'); legenda(faixaPorId('encerramento').texto, 18, 27); } },
+    { t:27.0, fn:()=>{ esconder('legenda'); festaConfete(200); playSfx('applause');
+                       tituloSecao('Cinética Química', 'Prof. Amauri Silva Júnior · ' + VERSAO); } }
+  ])
+};
+
+/* ---- helper usado na faixa de temperatura: aquece termômetro + bolhas ---- */
+let _aqueceTween = null;
+function aquecerBancada(celsiusAlvo, durMs){
+  _aqueceTween = { de:25, para:celsiusAlvo, t0:performance.now(), dur:durMs || 4000 };
+}
+function tickAquecimento(){
+  if(!_aqueceTween) return;
+  const p = clamp((performance.now() - _aqueceTween.t0) / _aqueceTween.dur, 0, 1);
+  const c = lerp(_aqueceTween.de, _aqueceTween.para, easeInOutCubic(p));
+  setTermometro(c);
+  if(bancada && bancada.A){
+    const f = .4 + (c - 25) / 65 * 2.4;
+    bancada.A.setTaxa(f); bancada.B.setTaxa(f * 1.15);
+  }
+  if(p >= 1) _aqueceTween = null;
+}
+
+/* ==========================================================================
+   TOCAR FAIXA — a) roteiro linear
+   --------------------------------------------------------------------------
+   tocarFaixa(i)          → toca a faixa de índice i
+   tocarFaixaPorId('id')  → idem, por id
+   opções: { manterQuiz:true }  não fecha o card de quiz aberto
+   ========================================================================== */
+function tocarFaixa(i, op){
+  op = op || {};
+  if(i < 0 || i >= FAIXAS.length) return;
+
+  const anterior = FAIXAS[faixaAtual] ? FAIXAS[faixaAtual].id : null;
+  const f = FAIXAS[i];
+  faixaAtual = i;
+
+  /* --- limpeza de estado da faixa anterior --- */
+  limparStory();
+  limparDigitacoes();
+  clearTimeout(_pausaTimer);
+  if(!op.manterQuiz){ /* overlays somem; o quiz só some se não for ramo do quiz */
+    OVERLAYS.forEach(id => { if(id !== 'quiz' || !quizAtivo) esconder(id); });
+  } else {
+    ['titulo','formula','badges','play'].forEach(esconder);
+  }
+
+  /* --- h) PERSISTÊNCIA DE CENA ---
+     Só desmonta a cena se ela for de OUTRO tipo E as duas faixas não
+     estiverem na lista de cenas persistentes. */
+  const cenaNova = CENA_DA_FAIXA[f.id] || 'bancada';
+  const ambasPersistentes = CENAS_PERSISTENTES.indexOf(f.id) >= 0 &&
+                            CENAS_PERSISTENTES.indexOf(anterior) >= 0;
+  if(cenaMontada && cenaMontada !== cenaNova && !ambasPersistentes){
+    /* a própria função preparar* chama novaRaiz() — nada a fazer aqui,
+       mas registramos a decisão para ficar explícito no código. */
+  }
+
+  /* --- áudio --- */
+  virtual.ativo = false; virtual.t = 0; virtual.dur = f.dur || 30; virtual.rodando = false;
+  player.src = f.arquivo;
+  player.currentTime = 0;
+  player.load();
+  const p = player.play();
+  if(p && p.catch) p.catch(()=>{ /* autoplay bloqueado: o botão já cuidou */ });
+  tocando = true;
+
+  /* --- coreografia --- */
+  if(EVENTOS[f.id]) EVENTOS[f.id]();
+  else rodarStory([{ t:.1, fn:()=> legenda(f.texto || '', .3, Math.max(3, (f.dur||10) - 2)) }]);
+
+  marcarSumario(f.id);
+}
+function tocarFaixaPorId(id, op){ tocarFaixa(idxFaixa(id), op); }
+
+/* Se o mp3 não existe/falha → cai para o RELÓGIO VIRTUAL (modo demonstração). */
+player.addEventListener('error', ()=>{
+  if(faixaAtual < 0) return;
+  entrarModoVirtual();
+});
+function entrarModoVirtual(){
+  virtual.ativo = true;
+  virtual.t = 0;
+  virtual.dur = FAIXAS[faixaAtual] ? (FAIXAS[faixaAtual].dur || 30) : 30;
+  virtual.rodando = tocando;
+  $('avisoAudio').classList.add('show');
+}
+/* Se o áudio real carregar, a duração real manda. */
+player.addEventListener('loadedmetadata', ()=>{
+  if(isFinite(player.duration) && player.duration > 0 && FAIXAS[faixaAtual]){
+    FAIXAS[faixaAtual].durReal = player.duration;
+  }
+});
+
+/* ==========================================================================
+   12. FLUXO DO BOTÃO DE PLAY — g) handler do evento 'ended'
+   --------------------------------------------------------------------------
+   Ao fim de CADA faixa decidimos, caso a caso, o que acontece.
+   ========================================================================== */
+player.addEventListener('ended', aoTerminarFaixa);
+
+function aoTerminarFaixa(){
+  tocando = false;
+  const id = FAIXAS[faixaAtual] ? FAIXAS[faixaAtual].id : null;
+  if(!id) return;
+
+  /* Dentro do quiz, quem manda é a engine (ramos R/W, próxima questão…). */
+  if(quizAtivo){ quizAoTerminarFaixa(id); return; }
+
+  switch(id){
+    /* --- Conceitos: mostra o play para o aluno seguir no ritmo dele --- */
+    case 'intro':
+    case 'velocidade':
+    case 'colisoes':
+    case 'ativacao':
+      mostrarPlay('Continuar');
+      break;
+
+    /* --- Fatores: auto-avança (a bancada é persistente, o fluxo é contínuo),
+           mas ainda mostra o play caso o aluno queira pausar aqui.        --- */
+    case 'fator_conc':
+    case 'fator_superficie':
+    case 'fator_temp':
+      mostrarPlay('Próximo fator');
+      break;
+
+    case 'fator_catalisador':
+      mostrarPlay('Ir para o quiz');
+      break;
+
+    /* --- Chamada do quiz: ESCONDE o play e abre as questões --- */
+    case 'quiz1':
+      esconder('play');
+      esconder('legenda');
+      abrirQuiz('quiz1');
+      break;
+
+    /* --- Fim: mostra o play como "assistir de novo" --- */
+    case 'encerramento':
+      mostrarPlay('Assistir de novo');
+      break;
+
+    default:
+      mostrarPlay('Continuar');
+  }
+}
+
+function mostrarPlay(txt){
+  $('btnPlayTxt').textContent = txt || 'Continuar';
+  mostrar('play'); popar('play');
+}
+
+/* Clique no play: começa, ou avança para a próxima faixa. */
+$('btnPlay').addEventListener('click', ()=>{
+  ctx();                                   // destrava o WebAudio no 1º toque
+  playSfx('click', .4);
+  esconder('play');
+
+  if(faixaAtual < 0){ tocarFaixa(0); return; }
+
+  const id = FAIXAS[faixaAtual].id;
+
+  /* Reiniciar depois do encerramento. */
+  if(id === 'encerramento'){ tocarFaixa(0); return; }
+
+  /* Se a faixa foi pausada no meio, retoma em vez de pular. */
+  if(tempoAtual() > .2 && tempoAtual() < duracaoAtual() - .4 && !tocando){
+    retomarNarracao(); return;
+  }
+
+  /* Da chamada do quiz, o play abre o quiz (não pula faixa). */
+  if(id === 'quiz1'){ abrirQuiz('quiz1'); return; }
+
+  /* Caso geral: pula os ramos de quiz e vai para a próxima faixa "de conteúdo". */
+  let prox = faixaAtual + 1;
+  while(prox < FAIXAS.length && /^q1[a-f]/.test(FAIXAS[prox].id)) prox++;
+  if(prox < FAIXAS.length) tocarFaixa(prox);
+  else mostrarPlay('Assistir de novo');
+});
+
+/* Toque no canvas: pausa/retoma a narração (fora de quiz 3D e câmera livre). */
+$('cena3d').addEventListener('click', (ev)=>{
+  if(alvos3D){ cliqueNaCena(ev); return; }   // item de quiz 3D: raycast
+  if(camLivre) return;                        // câmera livre: o arrasto manda
+  if(quizAtivo) return;                       // durante o quiz não pausa
+  if(faixaAtual < 0) return;
+  if(tocando){ pausarNarracao(); mostrarPlay('Retomar'); }
+});
+
+/* ==========================================================================
+   SUMÁRIO — f)
+   ========================================================================== */
+function montarSumario(){
+  const lista = $('listaSum');
+  lista.innerHTML = '';
+  SUMARIO.forEach((s, i)=>{
+    const b = document.createElement('button');
+    b.className = 'item-sum'; b.type = 'button'; b.dataset.faixa = s.faixa;
+    b.innerHTML = '<span class="n">' + (i+1) + '</span><span>' + s.titulo.replace(/^\d+\.\s*/, '') + '</span>';
+    b.onclick = ()=>{
+      playSfx('click', .4);
+      fecharSumario();
+      fecharQuiz();
+      esconder('play');
+      ctx();
+      /* 'acao' reconstrói o estado da cena antes de tocar; sem ela, só toca. */
+      if(s.acao){ try { s.acao(); } catch(e){ console.error(e); } }
+      tocarFaixaPorId(s.faixa);
+    };
+    lista.appendChild(b);
+  });
+}
+function marcarSumario(idFaixa){
+  $$('#listaSum .item-sum').forEach(b => b.classList.toggle('atual', b.dataset.faixa === idFaixa));
+}
+function abrirSumario(){ mostrar('sumario'); mostrar('fundoSum'); }
+function fecharSumario(){ esconder('sumario'); esconder('fundoSum'); }
+$('btnSumario').addEventListener('click', ()=>{
+  playSfx('click', .35);
+  $('sumario').classList.contains('show') ? fecharSumario() : abrirSumario();
+});
+$('fundoSum').addEventListener('click', fecharSumario);
+
+/* Selo de versão → modo câmera livre. */
+$('versao').textContent = VERSAO;
+$('versao').addEventListener('click', alternarCamLivre);
+
+/* ==========================================================================
+   LOOP PRINCIPAL
+   ========================================================================== */
+function animar(){
+  requestAnimationFrame(animar);
+  const dt = Math.min(.05, relogio.getDelta());
+
+  tickRelogioVirtual(dt);   // relógio sintético (modo demonstração)
+  tickStory();              // cues por tempo de áudio
+  tickDigitacoes();         // máquina de escrever
+  tickCamera();             // easing da câmera
+  tickOrbita(dt);           // órbita lenta
+  tickMB();                 // animação da curva de Maxwell-Boltzmann
+  tickAquecimento();        // termômetro + bolhas
+  tickConfete();
+
+  for(let i = 0; i < atualizadores.length; i++) atualizadores[i](dt);
+
+  if(camLivre && (performance.now() % 6 | 0) === 0) atualizarHud();
+  renderer.render(scene, camera);
+}
+
+/* ==========================================================================
+   13. BOOT / PWA
+   ========================================================================== */
+/* Mensagem de falha na tela de carregamento (nunca deixa girando pra sempre). */
+function falharCarregamento(msg, detalhe){
+  $('carregando').classList.remove('sumiu');
+  $('carregando').innerHTML =
+    '<div class="miolo" style="max-width:32ch;padding:0 18px">' +
+    '<p style="color:#ff5a3c;font-size:15px;letter-spacing:0;text-transform:none;line-height:1.5">' +
+    msg + '</p>' +
+    (detalhe ? '<p style="color:#9fb8ae;font-size:12px;letter-spacing:0;text-transform:none;' +
+               'margin-top:12px;font-family:ui-monospace,Consolas,monospace">' + detalhe + '</p>' : '') +
+    '</div>';
+}
+
+/* --------------------------------------------------------------------------
+   Garante que o Three.js existe antes de montar a cena.
+   1) libs/three.min.js (local, já no <head>)
+   2) se faltar, tenta os CDNs em ordem
+   3) se nada funcionar, mostra o motivo em vez de travar
+   -------------------------------------------------------------------------- */
+const CDNS_THREE = [
+  'https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js',
+  'https://unpkg.com/three@0.134.0/build/three.min.js'
+];
+function garantirThree(depois){
+  if(window.THREE){ depois(); return; }
+  let i = 0;
+  (function tentar(){
+    if(i >= CDNS_THREE.length){
+      falharCarregamento(
+        'Não foi possível carregar o Three.js.',
+        'Confira se o arquivo libs/three.min.js está na pasta do app.');
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = CDNS_THREE[i++];
+    s.onload  = ()=> window.THREE ? depois() : tentar();
+    s.onerror = tentar;
+    document.head.appendChild(s);
+  })();
+}
+
+/* Watchdog: se em 15 s a tela de carregamento ainda estiver aí, avisa. */
+setTimeout(()=>{
+  if(!$('carregando').classList.contains('sumiu') && !cenaMontada){
+    falharCarregamento('O app demorou demais para iniciar.',
+      'THREE=' + (window.THREE ? 'ok' : 'ausente') + ' · abra o console (F12) para ver o erro.');
+  }
+}, 15000);
+
+function boot(){
+  try {
+    iniciarApp();
+  } catch(e){
+    console.error(e);
+    falharCarregamento('Erro ao montar a cena 3D.', (e && e.message) || String(e));
+  }
+}
+
+function iniciarApp(){
+  iniciar3D();
+  ligarControlesCamLivre();
+  montarSumario();
+  sondarSfx();
+  mbPosicionarEa();
+  graficoConcGrade();
+
+  /* Cena de abertura já montada por trás da tela de carregamento. */
+  prepararBancada({ taxaA:.3, taxaB:.45 });
+  irParaCamera(CAM_GERAL, false);
+  orbitaSuave = .03;
+
+  animar();
+
+  setTimeout(()=>{
+    $('carregando').classList.add('sumiu');
+    tituloSecao('Cinética Química', 'toque em COMEÇAR');
+    mostrarPlay('Começar');
+  }, 650);
+
+  /* --- Service worker (PWA) --- */
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('sw.js').catch(()=>{});
+    });
+  }
+}
+
+/* Pausa a narração se o app for para segundo plano. */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden && tocando){ pausarNarracao(); mostrarPlay('Retomar'); }
+});
+
+/* Bloqueia zoom por duplo toque. */
+let _ultimoToque = 0;
+document.addEventListener('touchend', (e)=>{
+  const agora = Date.now();
+  if(agora - _ultimoToque < 300) e.preventDefault();
+  _ultimoToque = agora;
+}, { passive:false });
+
+/* Só monta a cena depois de garantir que o Three.js está disponível. */
+garantirThree(boot);
+</script>
+</body>
+</html>

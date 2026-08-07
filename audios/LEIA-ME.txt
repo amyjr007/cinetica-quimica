@@ -1,0 +1,41 @@
+ÁUDIOS DO APP CINÉTICA QUÍMICA
+==============================
+
+Enquanto não houver mp3 aqui, o app roda em MODO DEMONSTRAÇÃO: um relógio
+virtual usa o campo "dur" de cada faixa (em cinetica.html, array FAIXAS) para
+disparar as cues na mesma ordem. Basta soltar os arquivos abaixo nesta pasta
+para a narração real assumir — a duração real do mp3 passa a mandar.
+
+NARRAÇÃO (audios/<id>.mp3)
+--------------------------
+intro.mp3               dur sugerida 34 s
+velocidade.mp3          42 s
+colisoes.mp3            44 s
+ativacao.mp3            46 s
+fator_conc.mp3          34 s
+fator_superficie.mp3    36 s
+fator_temp.mp3          44 s
+fator_catalisador.mp3   46 s
+quiz1.mp3               10 s
+encerramento.mp3        34 s
+
+QUIZ — pergunta / ramo de acerto (R) / ramo de erro (W)
+-------------------------------------------------------
+q1a.mp3  q1aR.mp3  q1aW.mp3     Q01 identifique o fator
+q1b.mp3  q1bR.mp3  q1bW.mp3     Q02 leia o diagrama
+q1c.mp3  q1cR.mp3  q1cW.mp3     Q03 colisão efetiva
+q1d.mp3  q1dR.mp3  q1dW.mp3     Q04 arrastar e soltar
+q1e.mp3  q1eR.mp3  q1eW.mp3     Q05 o que o catalisador altera
+q1f.mp3  q1fR.mp3  q1fW.mp3     Q06 toque no béquer (3D)
+
+EFEITOS SONOROS (audios/sfx/<nome>.mp3) — TODOS OPCIONAIS
+----------------------------------------------------------
+applause.mp3   funfare.mp3   error.mp3   click.mp3
+proxima.mp3    pop.mp3       fizz.mp3    whoosh.mp3
+
+Se um desses arquivos não existir, o app sintetiza o som com WebAudio
+automaticamente (função sintetizarSfx em cinetica.html). Colocar o mp3
+substitui o som sintético sem nenhuma outra alteração.
+
+IMPORTANTE: ao trocar/adicionar áudios, ajuste o campo "dur" da faixa em
+FAIXAS e lembre-se de subir a versão (VERSAO no HTML + CACHE no sw.js).
