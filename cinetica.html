@@ -816,7 +816,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.8.2</div>
+  <div id="versao">v1.8.3</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -889,7 +889,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.8.2';
+const VERSAO = 'v1.8.3';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -1257,6 +1257,7 @@ function retomarNarracao(){
    ------------------------------------------------------------------------ */
 const SFX_NOMES = ['applause','funfare','error','click','proxima','pop','fizz','whoosh'];
 const sfxDisponivel = {};   // nome -> true se o mp3 existe
+const sfxAudio = {};        // nome -> <audio> já baixado, pronto para clonar
 let audioCtx = null;
 
 function ctx(){
@@ -1271,8 +1272,14 @@ function ctx(){
 function playSfx(nome, vol){
   vol = (vol === undefined) ? .7 : vol;
   if(sfxDisponivel[nome]){
-    const a = new Audio('audios/sfx/' + nome + '.mp3');
-    a.volume = vol; a.play().catch(()=>{});
+    /* cloneNode do elemento JÁ BAIXADO em sondarSfx(): toca na hora, sem
+       esperar a rede. E a cópia permite dois disparos sobrepostos — no
+       acerto, applause e funfare tocam juntos; reusar o mesmo elemento
+       faria o segundo cortar o primeiro. */
+    const base = sfxAudio[nome];
+    const a = base ? base.cloneNode() : new Audio('audios/sfx/' + nome + '.mp3');
+    a.volume = clamp(vol, 0, 1);
+    a.play().catch(()=>{});
     return;
   }
   sintetizarSfx(nome, vol);
@@ -1327,11 +1334,20 @@ function sintetizarSfx(nome, vol){
   }
 }
 
-/* Descobre quais mp3 de efeito existem (HEAD). Falha silenciosa = sintetiza. */
+/* Descobre quais mp3 de efeito existem (HEAD) e JÁ OS BAIXA. Sem o preload,
+   o arquivo só começaria a ser buscado no clique e o aplauso chegaria depois
+   do confete. Falha silenciosa = sintetiza com WebAudio. */
 function sondarSfx(){
   SFX_NOMES.forEach((n)=>{
     fetch('audios/sfx/' + n + '.mp3', { method:'HEAD' })
-      .then(r => { sfxDisponivel[n] = r.ok; })
+      .then(r => {
+        sfxDisponivel[n] = r.ok;
+        if(!r.ok) return;
+        const a = new Audio('audios/sfx/' + n + '.mp3');
+        a.preload = 'auto';
+        a.load();
+        sfxAudio[n] = a;
+      })
       .catch(()=>{ sfxDisponivel[n] = false; });
   });
 }
