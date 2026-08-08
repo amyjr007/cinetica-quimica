@@ -128,6 +128,32 @@ contraste de temperatura vem da *fill* azulada contra a *key* branco-quente.
 O cubemap de `prepararAmbiente()` também é cinza neutro — é ele que o metal reflete, e em
 tons de vinho o aço do tripé e do Bunsen saía cor de cobre.
 
+## Iluminação
+
+Rig de três luzes mais ambiente, somando ~1.24 de irradiância. **A soma importa**: no toon
+shading cada luz devolve até 1.0 e elas somam, então intensidades altas estouram a cena em
+branco.
+
+| Luz | Papel |
+|---|---|
+| `HemisphereLight` | ambiente; o chão é marrom de madeira, simulando o quique do tampo |
+| **key** `DirectionalLight` | luminária principal, alta e à direita. **A única que projeta sombra** |
+| **fill** `DirectionalLight` | azulada, do lado oposto: abre a sombra sem apagá-la |
+| **rim** `PointLight` | lâmpada do teto entre bancada e parede; separa a silhueta do fundo |
+
+Sombras são `PCFSoftShadowMap` com mapa 1024 e frustum colado na bancada (±11) — quanto
+menor a caixa, mais texels por centímetro e mais limpa a borda. Se aparecer *acne* (listras
+na madeira), o parâmetro a mexer é `key.shadow.normalBias`, não o `bias`.
+
+`configurarSombras(raiz)` decide quem projeta, e roda no fim de cada `preparar*()` porque
+as flags morrem junto com a cena. Não projetam: cascas de `contorno()` (dariam uma segunda
+sombra maior que o objeto), materiais transparentes (o mapa de sombras é binário — o vidro
+viraria uma mancha preta sólida) e `PlaneGeometry` (parede e chão sombreariam a sala
+inteira). O quadro é `MeshBasicMaterial`, que não recebe sombra — o texto está a salvo.
+
+A rampa toon tem 5 degraus com piso em 74/255. Com quatro degraus e piso em 46, todo lado
+que não olhava para a key virava um borrão preto.
+
 ## Cenário
 
 A sala tem duas paredes. A do **fundo** carrega o quadro onde os gráficos são projetados.

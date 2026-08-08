@@ -755,7 +755,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.4.0</div>
+  <div id="versao">v1.5.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -813,7 +813,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.4.0';
+const VERSAO = 'v1.5.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -1408,6 +1408,15 @@ function desvanecer(obj, para, ms, aoFim){
   _fades = _fades.filter(f => f.obj !== obj);   // no máximo um fade por objeto
   if(para > 0) obj.visible = true;              // precisa render para aparecer
 
+  /* O mapa de sombras é binário: ignora opacidade. Sem isto, a bancada
+     esvaziaria enquanto as sombras dos béqueres continuavam cheias no tampo,
+     sumindo de estalo só no último frame. Desligamos a projeção já na saída
+     e devolvemos na entrada — cada malha volta ao que configurarSombras()
+     tinha decidido para ela. */
+  obj.traverse((o)=>{
+    if(o.isMesh) o.castShadow = (para > 0) && (o.userData._projeta0 === true);
+  });
+
   if(!ms || ms <= 0){
     obj.userData._fadeK = para;
     _aplicarFade(mats, para);
@@ -1454,7 +1463,12 @@ function gradienteToon(){
   /* Degraus de luz do toon shading. O shader lê o texel em .rgb, então o
      valor precisa estar replicado nos 3 canais — por isso RGBAFormat e não
      RedFormat (com RedFormat, G e B vêm zerados e a cena inteira fica rosa). */
-  const niveis = [46, 112, 190, 255];   // degraus: sombra funda → luz cheia
+  /* 5 degraus, e o mais escuro em 74 (29%) em vez de 46 (18%). Com quatro
+     degraus e um piso tão baixo, todo lado que não olhava para a key light
+     virava um borrão preto: a madeira perdia o veio e o béquer perdia o
+     contorno do vidro. Mais um degrau dá a meia-luz que faltava sem tirar
+     a banda dura, que é o que faz o desenho parecer desenho. */
+  const niveis = [74, 130, 180, 220, 255];   // sombra funda → luz cheia
   const dados = new Uint8Array(niveis.length * 4);
   for(let i = 0; i < niveis.length; i++){
     dados[i*4] = dados[i*4+1] = dados[i*4+2] = niveis[i];
@@ -1477,6 +1491,10 @@ function contorno(mesh, esp){
   );
   m.scale.multiplyScalar(esp || 1.045);
   m.renderOrder = -1;
+  /* A casca é uma cópia INFLADA e virada do avesso do próprio objeto: se
+     projetasse sombra, cada objeto ganharia uma segunda sombra maior que
+     ele, deslocada. Fica fora do mapa de sombras. */
+  m.userData.semSombra = true;
   mesh.add(m);
   return mesh;
 }
@@ -2093,6 +2111,12 @@ function iniciar3D(){
   renderer = new THREE.WebGLRenderer({ canvas:cv, antialias:true, alpha:false });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  /* Sombras: é o que dava mais falta. Sem elas os béqueres pareciam colados
+     na bancada por Photoshop, sem peso e sem contato com o tampo.
+     PCFSoft com mapa de 1024 — a cena tem poucas dezenas de malhas, então o
+     passe extra de profundidade é barato até no celular. */
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   /* Encoding LINEAR de propósito: assim as cores hex dos materiais aparecem
      como foram escolhidas na paleta do CSS. Com sRGBEncoding, o gama clareia
      demais os tons escuros e a bancada perde o clima de laboratório. */
@@ -2109,15 +2133,45 @@ function iniciar3D(){
 
   /* Luzes — CALIBRADAS: no toon shading cada luz devolve até 1.0 de
      irradiância e elas SOMAM. Intensidades altas estouram a cena em branco.
-     Total somado aqui fica ~1.2, que preserva os tons escuros do laboratório. */
-  /* Nenhuma luz é vermelha: a rim light era rubi e banhava a sala inteira de
-     vinho — era ela que fazia a madeira virar mogno. Agora é a lâmpada do
-     teto, branco-quente, e o contraste de temperatura fica por conta da fill
-     azulada, que já existia. */
-  scene.add(new THREE.HemisphereLight(0xfff0e6, 0x1a1918, .32));
-  const key  = new THREE.DirectionalLight(0xfff0d8, .55); key.position.set(5, 9, 6);   scene.add(key);
-  const fill = new THREE.DirectionalLight(CORES.frio, .18); fill.position.set(-6, 4, -4); scene.add(fill);
-  const rim  = new THREE.PointLight(0xffe9d6, .30, 20);    rim.position.set(0, 5.5, -3); scene.add(rim);
+     O total aqui fica ~1.24: um pouco abaixo do que era, porque a rampa toon
+     agora tem o piso mais alto e a mesma soma clarearia demais.
+
+     Nenhuma luz é vermelha: a rim light já foi rubi e banhava a sala de
+     vinho. O contraste de temperatura vem da fill AZULADA contra a key
+     branco-quente — é o que dá volume sem sujar a cor da madeira. */
+
+  /* Ambiente. O chão da hemisférica é um marrom de madeira, não cinza: é a
+     luz que ricocheteia do tampo e sobe. Sem esse quique, a barriga dos
+     béqueres e a parte de baixo dos tripés ficavam mortas. */
+  scene.add(new THREE.HemisphereLight(0xfff0e6, 0x3a3026, .30));
+
+  /* KEY — a janela/luminária principal, alta e à direita. É a única que
+     projeta sombra: duas sombras cruzadas em cena de bancada viram sujeira. */
+  const key = new THREE.DirectionalLight(0xfff0d8, .52);
+  key.position.set(5, 9, 6);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  /* Frustum colado na bancada (13 x 6) e não na cena inteira: quanto menor a
+     caixa, mais texels de sombra sobram por centímetro e mais limpa fica a
+     borda. near/far cobrem a distância da luz até o chão em -3.6. */
+  const cs = key.shadow.camera;
+  cs.left = -11; cs.right = 11; cs.top = 11; cs.bottom = -11;
+  cs.near = 1;   cs.far = 30;
+  /* normalBias é o que mata o acne (as listras na madeira): empurra a
+     amostra ao longo da normal, em vez de achatar tudo com bias negativo,
+     que descolaria a sombra do pé do objeto. */
+  key.shadow.bias = -0.0005;
+  key.shadow.normalBias = 0.03;
+  scene.add(key); scene.add(key.target);
+
+  /* FILL azulada, do lado oposto: abre a sombra sem apagá-la. */
+  const fill = new THREE.DirectionalLight(CORES.frio, .16);
+  fill.position.set(-6, 4, -4); scene.add(fill);
+
+  /* RIM: lâmpada do teto entre a bancada e a parede. Separa a silhueta dos
+     objetos do fundo escuro. */
+  const rim = new THREE.PointLight(0xffe9d6, .26, 20);
+  rim.position.set(0, 5.5, -3); scene.add(rim);
 
   irParaCamera(CAM_GERAL, false);
   window.addEventListener('resize', aoRedimensionar);
@@ -2171,6 +2225,36 @@ function novaRaiz(){
   raizCena = new THREE.Group();
   scene.add(raizCena);
   return raizCena;
+}
+
+/* --------------------------------------------------------------------------
+   SOMBRAS — quem projeta e quem recebe.
+   Chamada no fim de cada preparar*(), porque as flags morrem junto com a cena.
+
+   As três exclusões, e por quê:
+
+   · userData.semSombra — as cascas de contorno() e qualquer coisa marcada à
+     mão. Uma casca inflada projetaria uma segunda sombra maior que o objeto.
+   · material transparente — vidro do béquer, bolhas, chama do Bunsen, caixa
+     da arena. O mapa de sombras é binário: não enxerga opacidade, então o
+     vidro projetaria uma mancha preta sólida, que é pior do que não projetar.
+   · PlaneGeometry — parede, quadro, moldura e chão. São planos enormes; se
+     projetassem, a parede jogaria sombra sobre a sala inteira. Recebem, que
+     é o que interessa neles.
+   -------------------------------------------------------------------------- */
+function configurarSombras(raiz){
+  if(!raiz) return;
+  raiz.traverse((o)=>{
+    if(!o.isMesh) return;
+    if(o.userData.semSombra){ o.castShadow = false; o.receiveShadow = false; return; }
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    const opaco  = !!m && !m.transparent;
+    const plano  = !!o.geometry && o.geometry.type === 'PlaneGeometry';
+    o.castShadow    = opaco && !plano;
+    o.receiveShadow = true;
+    /* Guardado para desvanecer() saber ao que voltar depois de um fade. */
+    o.userData._projeta0 = o.castShadow;
+  });
 }
 
 /* -------------------------- peças reutilizáveis -------------------------- */
@@ -2435,6 +2519,7 @@ function prepararBancada(op){
 
   atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); bunsen.atualizar(dt); });
 
+  configurarSombras(raiz);
   cenaMontada = 'bancada';
   bancada = { A, B, bunsen, rotA, rotB, equipamentos, raiz };
   return bancada;
@@ -2494,6 +2579,7 @@ function prepararQuadro(qual){
     const B = criarBequer({ x: 3.4, z:.4, corLiq:0xffc46b, taxa:.55 });
     equipamentos.add(A.grupo); equipamentos.add(B.grupo);
     atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); });
+    configurarSombras(raiz);
     cenaMontada = 'quadro';
     bancada = { A, B, bunsen:{ ligar(){}, atualizar(){}, estaLigado(){return false;} },
                 equipamentos, raiz };
@@ -2565,6 +2651,11 @@ function prepararArena(op){
     };
     sortearPosicao(m);
     sortearVelocidade(m);
+    /* Aqui e não no fim de prepararArena(): setN() cria moléculas depois que
+       a cena já está montada, e elas precisam entrar no mapa de sombras
+       também. Tem de vir DEPOIS do m.userData = {...} acima, que substitui o
+       objeto inteiro e apagaria as marcas. */
+    configurarSombras(m);
     g.add(m); moleculas.push(m);
     return m;
   }
@@ -2691,6 +2782,7 @@ function prepararArena(op){
   }
 
   atualizadores.push(atualizar);
+  configurarSombras(raiz);
   cenaMontada = 'arena';
 
   arena = {
