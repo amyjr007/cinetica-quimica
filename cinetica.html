@@ -816,7 +816,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.8.3</div>
+  <div id="versao">v1.8.4</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -889,7 +889,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.8.3';
+const VERSAO = 'v1.8.4';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3152,9 +3152,11 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
    negativo o z, mais à direita o objeto aparece. É por isso que a torneira B
    — a rápida, que precisa ficar à direita — está no z menor.
-   O alvo em x acompanha TORNEIRA_X: como o olhar corre nesse eixo, mover as
-   torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe. */
-const CAM_TORNEIRAS = { theta: 1.50, phi: 1.17, dist:  9.0, target:[-5.4, -0.1, -1.9] };
+   O alvo em x anda junto com TORNEIRA_X: como o olhar corre nesse eixo, mover
+   as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
+   Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
+   um pouco acima do topo da tela. */
+const CAM_TORNEIRAS = { theta: 1.47, phi: 1.36, dist:  8.2, target:[-4.6, -1.6, -3.3] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
