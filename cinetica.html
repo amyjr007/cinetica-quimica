@@ -819,7 +819,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.9.0</div>
+  <div id="versao">v1.9.1</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -892,7 +892,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.9.0';
+const VERSAO = 'v1.9.1';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -923,15 +923,17 @@ const CORES = {
    o campo `texto` da faixa (usado como fallback quando não há mp3).
 
    Os \n são quebras OBRIGATÓRIAS: no quadro a frase é cortada por sentido,
-   não por onde a largura acabou. Deixar a quebra automática decidir dava uma
-   mancha de texto larga demais e com corte no meio de "estuda a velocidade".
-   Cada trecho ainda pode quebrar sozinho se não couber (é o que salva o
-   retrato, cuja coluna é bem mais estreita). */
+   não por onde a largura acabou. Cada trecho ainda pode quebrar sozinho se
+   não couber (é o que salva o retrato, cuja coluna é bem mais estreita).
+
+   COR: os trechos que começam com "N." são itens de lista e saem na cor do
+   rótulo (âmbar), não no branco do corpo — ver quebrarLinhas(). A regra é o
+   próprio texto, sem marcador especial para o autor lembrar de digitar. */
 const DEF_CINETICA =
-  'É a parte da Química que estuda\n' +
-  'a velocidade de uma reação química,\n' +
-  'os fatores que a afetam\n' +
-  'e as formas de controlá-la.';
+  'É a parte da Química que estuda:\n' +
+  '1. A velocidade de uma reação.\n' +
+  '2. Os fatores que afetam essa velocidade.\n' +
+  '3. Como controlar essa velocidade.';
 
 /* ==========================================================================
    2. FAIXAS — roteiro linear
@@ -2087,24 +2089,30 @@ function texturaQuadro(){
    Dentro de cada trecho ainda vale a quebra por largura, para o trecho não
    estourar a coluna estreita do retrato.
 
+   Devolve { txt, destaque } por linha. `destaque` marca os itens de lista —
+   trechos que começam com "1.", "2."… — que são pintados na cor do rótulo. A
+   marca vem do TRECHO, então a continuação de um item que quebrou por largura
+   continua destacada, em vez de metade do item voltar ao branco.
+
    IMPORTANTE para a digitação: tanto o espaço quanto o '\n' ocupam UM
    caractere do texto original, e é por isso que pintarQuadro() desconta
-   `linha.length + 1` por linha ao contar o que já foi revelado. */
+   `linha.txt.length + 1` por linha ao contar o que já foi revelado. */
 function quebrarLinhas(c, txt, larguraMax){
   const linhas = [];
   String(txt).split('\n').forEach((trecho)=>{
+    const destaque = /^\s*\d+\./.test(trecho);
     const palavras = trecho.split(/\s+/).filter(Boolean);
-    if(!palavras.length){ linhas.push(''); return; }
+    if(!palavras.length){ linhas.push({ txt:'', destaque }); return; }
     let atual = '';
     for(let i = 0; i < palavras.length; i++){
       const teste = atual ? atual + ' ' + palavras[i] : palavras[i];
       if(atual && c.measureText(teste).width > larguraMax){
-        linhas.push(atual); atual = palavras[i];
+        linhas.push({ txt:atual, destaque }); atual = palavras[i];
       } else {
         atual = teste;
       }
     }
-    if(atual) linhas.push(atual);
+    if(atual) linhas.push({ txt:atual, destaque });
   });
   return linhas;
 }
@@ -2170,10 +2178,10 @@ function pintarQuadro(){
     }
     if(QUADRO_TXT.saindoDef){
       c.font = '600 ' + L.tamDef + 'px ' + FONTE;
-      c.fillStyle = '#f6ece9';
       let y = H * L.defV;
       quebrarLinhas(c, QUADRO_TXT.saindoDef, LARG).forEach((linha)=>{
-        c.fillText(linha, ESQ + dx, y);
+        c.fillStyle = linha.destaque ? '#ff9d33' : '#f6ece9';
+        c.fillText(linha.txt, ESQ + dx, y);
         y += L.linha;
       });
     }
@@ -2195,7 +2203,6 @@ function pintarQuadro(){
   /* ---- 5) definição, revelada caractere a caractere ---- */
   if(QUADRO_TXT.definicao){
     c.font = '600 ' + L.tamDef + 'px ' + FONTE;
-    c.fillStyle = '#f6ece9';
     const linhas = quebrarLinhas(c, QUADRO_TXT.definicao, LARG);
     let restam = QUADRO_TXT.revelado;
     let y = H * L.defV;
@@ -2203,7 +2210,9 @@ function pintarQuadro(){
     for(let i = 0; i < linhas.length; i++){
       const linha = linhas[i];
       if(restam <= 0) break;
-      const visivel = linha.slice(0, restam);
+      const visivel = linha.txt.slice(0, restam);
+      /* Itens de lista saem em âmbar, a mesma cor de "Definição:". */
+      c.fillStyle = linha.destaque ? '#ff9d33' : '#f6ece9';
       c.fillText(visivel, ESQ, y);
 
       /* Barra de digitação no fim do que já apareceu. Só na linha CORRENTE:
@@ -2212,10 +2221,9 @@ function pintarQuadro(){
         const x = ESQ + c.measureText(visivel).width + 8;
         c.fillStyle = '#ff3b30';
         c.fillRect(x, y - L.tamDef * .74, 6, L.tamDef * .9);
-        c.fillStyle = '#f6ece9';
       }
       /* +1 pelo espaço que a quebra de linha consumiu do texto original. */
-      restam -= linha.length + 1;
+      restam -= linha.txt.length + 1;
       y += L.linha;
     }
   }
