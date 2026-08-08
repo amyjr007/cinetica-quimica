@@ -805,7 +805,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.6.1</div>
+  <div id="versao">v1.6.2</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -878,7 +878,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.6.1';
+const VERSAO = 'v1.6.2';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -1990,14 +1990,17 @@ const LAYOUT_QUADRO = {
      dá para usar a entrelinha como régua para mover na horizontal.
        título      -15% e 2 linhas à esquerda (.550 -> .484). Cabe folgado:
                    a borda esquerda dele para em ndcX -0.73.
-       rótulo/def  -10% e MEIA linha à esquerda, não uma nem 0.75. A margem
-                   esquerda do texto é o gargalo — ela nasce a ndcX -0.93 e a
-                   borda da tela é -1.00. Medido na tela mais estreita
-                   (412x915): 0.5 linha -> -0.98 (passa), 0.75 -> -1.01 e
-                   1 linha -> -1.04 (o primeiro caractere seria cortado).
+       rótulo/def  -10% e 0.75 linha à esquerda. A margem esquerda do texto é
+                   o gargalo: a borda da tela fica em ndcX -1.00 e o texto
+                   nasce a -0.93. Referência de medida = celular em pé
+                   390x844, onde 0.75 linha para em -0.98. ATENÇÃO ao mexer:
+                   1 linha inteira já iria a -1.04 e cortaria o primeiro
+                   caractere; e em aparelhos de proporção mais estreita
+                   (412x915) este valor já encosta em -1.01. O valor seguro
+                   em qualquer celular é 0.5 linha (colEsq .2596).
      A entrelinha acompanha os -10% do corpo (63 -> 57), senão o bloco ficaria
      frouxo com a letra menor. */
-  retrato:  { colEsq:.2596, colDir:.8506, tituloU:.484,
+  retrato:  { colEsq:.2514, colDir:.8424, tituloU:.484,
               tamTitulo:66, tamRotulo:48, tamDef:41,
               tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:57 }
 };
