@@ -329,7 +329,18 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 
 .quiz-alts{ display:grid; gap:9px; }
 .quiz-alts.duas-col{ grid-template-columns:1fr 1fr; }
-@media(max-width:560px){ .quiz-alts.duas-col{ grid-template-columns:1fr; } }
+/* O :not(.compacta) importa: alternativas longas empilham em tela estreita,
+   mas as compactas são curtas de propósito e devem ficar lado a lado. */
+@media(max-width:560px){ .quiz-alts.duas-col:not(.compacta){ grid-template-columns:1fr; } }
+
+/* COMPACTA — para respostas de uma palavra ("Torneira A" / "Torneira B").
+   Dois botões estreitos, centrados no card, sem o selo de letra à esquerda:
+   ali o selo repetiria a informação que já está escrita no botão. */
+.quiz-alts.compacta{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  max-width:340px; margin:0 auto; gap:10px;
+}
+.quiz-alts.compacta .alt{ justify-content:center; text-align:center; padding:13px 10px; }
 
 .alt{
   display:flex; align-items:center; gap:11px; text-align:left; cursor:pointer;
@@ -805,7 +816,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.8.1</div>
+  <div id="versao">v1.8.2</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -878,7 +889,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.8.1';
+const VERSAO = 'v1.8.2';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3796,7 +3807,7 @@ const QUIZZES = {
       { tipo:'alternativas',
         enunciado:'Qual torneira goteja mais rápido?',
         alternativas:[ { txt:'Torneira A' }, { txt:'Torneira B' } ],
-        correta:1, duasCol:true,
+        correta:1, compacto:true,
         faixaAcerto:'dialogo1R', faixaErro:'dialogo1W' }
     ]
   },
@@ -4014,14 +4025,19 @@ function revelarOpcoes(){
 }
 
 /* ---------------------------- tipo: alternativas ------------------------ */
+/* item.compacto  → dois botões estreitos lado a lado, sem o selo de letra.
+   Serve para alternativas de uma palavra; as longas continuam em lista. */
 function montarAlternativas(item, corpo){
   const letras = 'ABCDEFGH';
   const div = document.createElement('div');
-  div.className = 'quiz-alts' + (item.duasCol ? ' duas-col' : '');
+  div.className = 'quiz-alts' +
+    (item.duasCol  ? ' duas-col' : '') +
+    (item.compacto ? ' compacta' : '');
   item.alternativas.forEach((a, i)=>{
     const b = document.createElement('button');
     b.className = 'alt'; b.type = 'button';
-    b.innerHTML = '<span class="letra">' + letras[i] + '</span><span>' + a.txt + '</span>';
+    const selo = item.compacto ? '' : '<span class="letra">' + letras[i] + '</span>';
+    b.innerHTML = selo + '<span>' + a.txt + '</span>';
     b.onclick = ()=> responder(item, i, b, div);
     div.appendChild(b);
   });
