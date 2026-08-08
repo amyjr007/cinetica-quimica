@@ -438,8 +438,57 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 }
 #flashBranco.on{ opacity:.75; transition:opacity .06s; }
 
+/* ---- Botão de áudio: play/pause + anel de progresso ----
+   Fica no canto inferior DIREITO; por isso o selo de versão e o HUD da
+   câmera livre foram para o canto esquerdo. */
+#botaoAudio{
+  position:fixed; z-index:72;
+  right:calc(12px + env(safe-area-inset-right));
+  bottom:calc(12px + env(safe-area-inset-bottom));
+  width:64px; height:64px; padding:0; border:1px solid var(--borda);
+  border-radius:50%; background:var(--painel); color:var(--rubi);
+  cursor:pointer; display:grid; place-items:center;
+  box-shadow:var(--sombra); backdrop-filter:blur(8px);
+  opacity:0; visibility:hidden;
+  transition:opacity .35s, visibility .35s, transform .16s, box-shadow .3s;
+}
+#botaoAudio.show{ opacity:1; visibility:visible; }
+/* Depois de .show de propósito: no quiz, com o áudio da questão terminado, o
+   botão não tem para onde avançar (quem navega é a engine). Apagado, ele
+   avisa que ali não há mais nada para clicar. */
+#botaoAudio.inerte{ opacity:.3; pointer-events:none; }
+#botaoAudio:active{ transform:scale(.92); }
+
+/* O anel ocupa a borda inteira do botão; o -90° faz o preenchimento começar
+   às 12h em vez de às 3h. */
+#botaoAudio .anel{
+  position:absolute; inset:0; width:100%; height:100%;
+  transform:rotate(-90deg); pointer-events:none;
+}
+#botaoAudio .trilhaA{ fill:none; stroke:rgba(255,59,48,.16); stroke-width:5; }
+#botaoAudio .progA{
+  fill:none; stroke:var(--rubi); stroke-width:5; stroke-linecap:round;
+}
+/* Glifo em SVG, e não em texto: "▶" e "❚❚" mudam de desenho e de largura
+   conforme a fonte que o aparelho tiver. */
+#botaoAudio .glifo{ position:relative; width:26px; height:26px; fill:currentColor; }
+#botaoAudio .gPause{ display:none; }
+#botaoAudio.tocando .gPlay{ display:none; }
+#botaoAudio.tocando .gPause{ display:block; }
+
+/* Fim de faixa: o botão chama a atenção para o próximo clique. */
+#botaoAudio.pronto{
+  box-shadow:var(--sombra), 0 0 0 0 rgba(255,59,48,.5);
+  animation:chamarBotao 1.8s ease-out infinite;
+}
+@keyframes chamarBotao{
+  0%   { box-shadow:var(--sombra), 0 0 0 0 rgba(255,59,48,.45); }
+  70%  { box-shadow:var(--sombra), 0 0 0 14px rgba(255,59,48,0); }
+  100% { box-shadow:var(--sombra), 0 0 0 0 rgba(255,59,48,0); }
+}
+
 #versao{
-  position:fixed; z-index:70; right:10px; bottom:calc(8px + env(safe-area-inset-bottom));
+  position:fixed; z-index:70; left:10px; bottom:calc(8px + env(safe-area-inset-bottom));
   padding:5px 11px; border-radius:999px; cursor:pointer; user-select:none;
   font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.06em;
   color:var(--rubi); background:rgba(26,11,10,.75); border:1px solid var(--borda);
@@ -450,7 +499,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 
 /* HUD compacto: só o título e o botão de copiar. */
 #hudCamera{
-  position:fixed; z-index:70; right:10px; bottom:46px; display:none;
+  position:fixed; z-index:70; left:10px; bottom:46px; display:none;
   width:max-content; min-width:124px; max-width:60vw;
   padding:8px 9px 9px; border-radius:12px; text-align:center;
   background:rgba(26,11,10,.94); border:1px solid var(--rubi);
@@ -476,8 +525,9 @@ canvas#cena3d.livre{ touch-action:none; cursor:grab; }
 canvas#cena3d.livre:active{ cursor:grabbing; }
 
 /* Aviso curto no rodapé (copiado, câmera livre ligada…) */
+/* 88px, e não 46: abaixo disso o toast passava por trás do botão de áudio. */
 #toast{
-  position:fixed; z-index:95; left:50%; bottom:calc(46px + env(safe-area-inset-bottom));
+  position:fixed; z-index:95; left:50%; bottom:calc(88px + env(safe-area-inset-bottom));
   transform:translate(-50%,12px); opacity:0; visibility:hidden; pointer-events:none;
   padding:8px 16px; border-radius:999px; max-width:88vw; text-align:center;
   font-family:var(--fonte); font-size:13px; font-weight:700; letter-spacing:.02em;
@@ -755,7 +805,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.5.2</div>
+  <div id="versao">v1.6.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -763,6 +813,21 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
     <button id="btnCopiarCam" type="button">copiar posição</button>
   </div>
   <div id="toast"></div>
+
+  <!-- Transporte de áudio: play/pause com anel de progresso.
+       O anel usa stroke-dashoffset; a circunferência real é calculada no JS
+       a partir do raio, para não haver número mágico fora de sincronia. -->
+  <button id="botaoAudio" type="button" aria-label="Tocar">
+    <svg class="anel" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="trilhaA" cx="50" cy="50" r="44"/>
+      <circle class="progA" id="botaoAudioProg" cx="50" cy="50" r="44"/>
+    </svg>
+    <svg class="glifo" viewBox="0 0 24 24" aria-hidden="true">
+      <path class="gPlay" d="M9.5 6.2 L18.4 12 L9.5 17.8 Z"/>
+      <rect class="gPause" x="8.4"  y="6.4" width="2.8" height="11.2" rx="1.2"/>
+      <rect class="gPause" x="12.8" y="6.4" width="2.8" height="11.2" rx="1.2"/>
+    </svg>
+  </button>
 
   <!-- Anel de progresso do "segurar 3s para copiar" (só em câmera livre) -->
   <div id="segurar" aria-hidden="true">
@@ -813,7 +878,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.5.2';
+const VERSAO = 'v1.6.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -4303,6 +4368,10 @@ function tocarFaixa(i, op){
   if(p && p.catch) p.catch(()=>{ /* autoplay bloqueado: o botão já cuidou */ });
   tocando = true;
 
+  /* --- transporte: o botão do canto assume a partir daqui --- */
+  botaoAudioPronto(false);
+  mostrar('botaoAudio');
+
   /* --- coreografia --- */
   if(EVENTOS[f.id]) EVENTOS[f.id]();
   else rodarStory([{ t:.1, fn:()=> legenda(f.texto || '', .3, Math.max(3, (f.dur||10) - 2)) }]);
@@ -4345,84 +4414,116 @@ function aoTerminarFaixa(){
   /* Dentro do quiz, quem manda é a engine (ramos R/W, próxima questão…). */
   if(quizAtivo){ quizAoTerminarFaixa(id); return; }
 
-  switch(id){
-    /* --- Conceitos: mostra o play para o aluno seguir no ritmo dele --- */
-    case 'dialogo1':
-    case 'velocidade':
-    case 'colisoes':
-    case 'ativacao':
-      mostrarPlay('Continuar');
-      break;
-
-    /* --- Fatores: auto-avança (a bancada é persistente, o fluxo é contínuo),
-           mas ainda mostra o play caso o aluno queira pausar aqui.        --- */
-    case 'fator_conc':
-    case 'fator_superficie':
-    case 'fator_temp':
-      mostrarPlay('Próximo fator');
-      break;
-
-    case 'fator_catalisador':
-      mostrarPlay('Ir para o quiz');
-      break;
-
-    /* --- Chamada do quiz: ESCONDE o play e abre as questões --- */
-    case 'quiz1':
-      esconder('play');
-      esconder('legenda');
-      abrirQuiz('quiz1');
-      break;
-
-    /* --- Fim: mostra o play como "assistir de novo" --- */
-    case 'encerramento':
-      mostrarPlay('Assistir de novo');
-      break;
-
-    default:
-      mostrarPlay('Continuar');
+  /* A chamada do quiz é a EXCEÇÃO combinada: em vez de esperar clique, ela
+     abre as questões sozinha. Todas as outras faixas caem no comportamento
+     padrão — o botão de áudio vira play e espera. */
+  if(id === 'quiz1'){
+    esconder('legenda');
+    abrirQuiz('quiz1');
+    return;
   }
+  botaoAudioPronto(true);
 }
 
+/* Botão grande e central — existe SÓ na capa, como chamada para começar.
+   Depois do primeiro toque quem comanda o áudio é o botão do canto. */
 function mostrarPlay(txt){
   $('btnPlayTxt').textContent = txt || 'Continuar';
   mostrar('play'); popar('play');
 }
 
-/* Clique no play: começa, ou avança para a próxima faixa. */
 $('btnPlay').addEventListener('click', ()=>{
   ctx();                                   // destrava o WebAudio no 1º toque
   playSfx('click', .4);
   esconder('play');
-
-  if(faixaAtual < 0){ tocarFaixa(0); return; }
-
-  const id = FAIXAS[faixaAtual].id;
-
-  /* Reiniciar depois do encerramento. */
-  if(id === 'encerramento'){ tocarFaixa(0); return; }
-
-  /* Se a faixa foi pausada no meio, retoma em vez de pular. */
-  if(tempoAtual() > .2 && tempoAtual() < duracaoAtual() - .4 && !tocando){
-    retomarNarracao(); return;
-  }
-
-  /* Da chamada do quiz, o play abre o quiz (não pula faixa). */
-  if(id === 'quiz1'){ abrirQuiz('quiz1'); return; }
-
-  /* Caso geral: pula os ramos de quiz e vai para a próxima faixa "de conteúdo". */
-  let prox = faixaAtual + 1;
-  while(prox < FAIXAS.length && /^q1[a-f]/.test(FAIXAS[prox].id)) prox++;
-  if(prox < FAIXAS.length) tocarFaixa(prox);
-  else mostrarPlay('Assistir de novo');
+  tocarFaixa(faixaAtual < 0 ? 0 : faixaAtual);
 });
 
-/* Toque no canvas: pausa/retoma a narração (fora de quiz 3D e câmera livre). */
+/* ==========================================================================
+   BOTÃO DE ÁUDIO — play/pause com anel de progresso
+   --------------------------------------------------------------------------
+   Um controle só, sempre no mesmo lugar, com três leituras:
+     · símbolo   play ou pause, conforme `tocando`
+     · anel      quanto do áudio da faixa já passou
+     · pulso     a faixa acabou, o próximo clique avança
+
+   O clique decide pelo ESTADO, não por um modo guardado à parte — assim ele
+   não sai de sincronia com o que o áudio está fazendo de verdade:
+     tocando ................. pausa
+     parado no meio .......... retoma
+     faixa terminada ......... toca a próxima
+   ========================================================================== */
+const ANEL_AUDIO_R = 44;
+const ANEL_AUDIO_C = 2 * Math.PI * ANEL_AUDIO_R;
+
+function botaoAudioPronto(v){
+  const b = $('botaoAudio'); if(b) b.classList.toggle('pronto', !!v);
+}
+
+/* A faixa acabou? Vale para o mp3 real e para o relógio virtual. */
+function faixaTerminou(){
+  const d = duracaoAtual();
+  return faixaAtual >= 0 && d > 0 && tempoAtual() >= d - .4;
+}
+
+/* Próxima faixa "de conteúdo" — pula os ramos R/W do quiz. */
+function avancarFaixa(){
+  if(faixaAtual < 0){ tocarFaixa(0); return; }
+  const id = FAIXAS[faixaAtual].id;
+  if(id === 'encerramento'){ tocarFaixa(0); return; }   // assistir de novo
+  if(id === 'quiz1'){ abrirQuiz('quiz1'); return; }
+
+  let prox = faixaAtual + 1;
+  while(prox < FAIXAS.length && /^q1[a-f]/.test(FAIXAS[prox].id)) prox++;
+  tocarFaixa(prox < FAIXAS.length ? prox : 0);
+}
+
+$('botaoAudio').addEventListener('click', ()=>{
+  ctx();
+  playSfx('click', .35);
+
+  if(faixaAtual < 0){ esconder('play'); tocarFaixa(0); return; }
+  if(tocando){ pausarNarracao(); return; }
+
+  if(faixaTerminou()){
+    /* Dentro do quiz quem navega é a engine (ramos de acerto/erro, próxima
+       questão). Aqui o botão só toca e pausa — avançar atropelaria o fluxo. */
+    if(quizAtivo) return;
+    botaoAudioPronto(false);
+    avancarFaixa();
+    return;
+  }
+  retomarNarracao();
+});
+
+/* Roda no loop principal: o anel acompanha o áudio quadro a quadro. */
+let _anelUltimo = -1;
+function tickBotaoAudio(){
+  const b = $('botaoAudio'); if(!b) return;
+  b.classList.toggle('tocando', tocando);
+  b.classList.toggle('inerte', quizAtivo && !tocando && faixaTerminou());
+  b.setAttribute('aria-label', tocando ? 'Pausar' : 'Tocar');
+
+  const d = duracaoAtual();
+  const p = (faixaAtual < 0 || !(d > 0)) ? 0 : clamp(tempoAtual() / d, 0, 1);
+  /* Só escreve no DOM quando o traço muda de verdade: em 60fps isso corta
+     quase todas as escritas de estilo, que são caras. */
+  const passo = Math.round(p * 360);
+  if(passo !== _anelUltimo){
+    _anelUltimo = passo;
+    $('botaoAudioProg').style.strokeDashoffset = (ANEL_AUDIO_C * (1 - p)).toFixed(2);
+  }
+}
+
+/* Toque no canvas: pausa/retoma a narração (fora de quiz 3D e câmera livre).
+   Não precisa mais chamar mostrarPlay: o botão do canto já vira play sozinho
+   assim que `tocando` fica falso. */
 $('cena3d').addEventListener('click', (ev)=>{
   if(alvos3D){ cliqueNaCena(ev); return; }   // item de quiz 3D: raycast
   if(camLivre) return;                        // câmera livre: o arrasto manda
   if(quizAtivo) return;                       // durante o quiz não pausa
   if(faixaAtual < 0) return;
-  if(tocando){ pausarNarracao(); mostrarPlay('Retomar'); }
+  if(tocando) pausarNarracao();
 });
 
 /* ==========================================================================
@@ -4463,6 +4564,17 @@ $('fundoSum').addEventListener('click', fecharSumario);
 $('versao').textContent = VERSAO;
 $('versao').addEventListener('click', alternarCamLivre);
 
+/* Anel do botão de áudio: o tracejado é a circunferência inteira, e o offset
+   é o que sobra para preencher. Calculado do raio para não virar número
+   mágico se alguém mexer no <circle>. */
+(function prepararAnelAudio(){
+  const p = $('botaoAudioProg');
+  if(p){
+    p.style.strokeDasharray  = ANEL_AUDIO_C.toFixed(2);
+    p.style.strokeDashoffset = ANEL_AUDIO_C.toFixed(2);
+  }
+})();
+
 /* ==========================================================================
    LOOP PRINCIPAL
    ========================================================================== */
@@ -4473,6 +4585,7 @@ function animar(){
   tickRelogioVirtual(dt);   // relógio sintético (modo demonstração)
   tickStory();              // cues por tempo de áudio
   tickDigitacoes();         // máquina de escrever
+  tickBotaoAudio();         // símbolo + anel de progresso do botão de áudio
   tickFades(dt);            // fade de objetos 3D (esvaziar/repor a bancada)
   tickCamera();             // easing da câmera
   tickOrbita(dt);           // órbita lenta
@@ -4584,7 +4697,7 @@ function iniciarApp(){
 
 /* Pausa a narração se o app for para segundo plano. */
 document.addEventListener('visibilitychange', ()=>{
-  if(document.hidden && tocando){ pausarNarracao(); mostrarPlay('Retomar'); }
+  if(document.hidden && tocando) pausarNarracao();
 });
 
 /* Bloqueia zoom por duplo toque. */
