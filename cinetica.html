@@ -805,7 +805,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.7.0</div>
+  <div id="versao">v1.8.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -878,7 +878,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.7.0';
+const VERSAO = 'v1.8.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -933,6 +933,14 @@ const FAIXAS = [
   /* Sem os \n: aqui o texto é legenda de DOM, e a quebra do quadro não vale. */
   { id:'dialogo1', arquivo:'audios/dialogo1.mp3', titulo:'O que a Cinética estuda', dur:29,
     texto:'Cinética Química ' + DEF_CINETICA.replace(/\n/g, ' ') },
+
+  /* Ramos da pergunta das torneiras, no fim da dialogo1. `ramo:true` os tira
+     da navegação linear: avancarFaixa() pula por cima deles, senão o botão de
+     play cairia no comentário de acerto em vez de ir para a próxima aula. */
+  { id:'dialogo1R', arquivo:'audios/dialogo1R.mp3', titulo:'Torneiras ✓', dur:18, ramo:true,
+    texto:'Isso! A torneira B pinga muito mais vezes por segundo — a mesma ideia de velocidade: quanto acontece em quanto tempo.' },
+  { id:'dialogo1W', arquivo:'audios/dialogo1W.mp3', titulo:'Torneiras ✗', dur:10, ramo:true,
+    texto:'Olhe de novo o intervalo entre as gotas: na B elas caem bem mais juntas.' },
 
   { id:'velocidade', arquivo:'audios/velocidade.mp3', titulo:'Velocidade de reação', dur:42,
     texto:'Velocidade média de reação é o quanto a concentração muda dividido pelo tempo gasto: v = ΔC / Δt, em mol por litro por segundo.' },
@@ -1006,7 +1014,8 @@ const CENAS_PERSISTENTES = [
 
 /* Que cena 3D cada faixa usa. 'bancada' | 'arena' | 'quadro' */
 const CENA_DA_FAIXA = {
-  dialogo1:'bancada', velocidade:'quadro', colisoes:'arena', ativacao:'quadro',
+  dialogo1:'bancada', dialogo1R:'bancada', dialogo1W:'bancada',
+  velocidade:'quadro', colisoes:'arena', ativacao:'quadro',
   fator_conc:'bancada', fator_superficie:'bancada', fator_temp:'bancada',
   fator_catalisador:'bancada',
   quiz1:'bancada',
@@ -2344,6 +2353,7 @@ function desmontarCena(){
   _fades.length = 0;
   limparGrupo(raizCena);
   raizCena = null; cenaMontada = null; bancada = null; arena = null;
+  torneiras = null;              // foram junto com a raiz
   atualizadores.length = 0;
 }
 function novaRaiz(){
@@ -2665,6 +2675,116 @@ function guardarEquipamentos(ms){
 function trazerEquipamentos(ms){
   if(bancada && bancada.equipamentos)
     desvanecer(bancada.equipamentos, 1, ms === undefined ? 800 : ms);
+}
+
+/* ==========================================================================
+   TORNEIRAS GOTEJANTES — a metáfora de velocidade da abertura
+   --------------------------------------------------------------------------
+   Duas torneiras de frente uma para a outra, pingando cada uma no seu béquer.
+   A da direita pinga bem mais rápido: é "quanto acontece por segundo" antes
+   de a fórmula aparecer.
+
+   Ficam num grupo PRÓPRIO, pendurado direto na raiz da cena — e não em
+   bancada.equipamentos. A abertura esvazia a bancada com um fade e deixa
+   aquele grupo invisível; se as torneiras morassem lá, nasceriam apagadas.
+   ========================================================================== */
+let torneiras = null;          // { grupo, A, B } enquanto a cena viver
+
+/* op.para = +1 ou -1: para que lado do eixo Z o braço aponta. Como as duas
+   se olham, cada uma recebe um sinal. */
+function criarTorneira(op){
+  op = Object.assign({ x:-.4, z:0, para:1, taxa:1, corGota:CORES.frio }, op || {});
+  const g = new THREE.Group(); g.position.set(op.x, 0, op.z);
+  const BRACO = .58;                                   // alcance do braço
+  const met = (c, r) => metal({ cor:c, rugosidade:r, repete:1.6 });
+
+  const flange = new THREE.Mesh(new THREE.CylinderGeometry(.20, .22, .09, 20), met(0x8f959b, .45));
+  flange.position.y = .045; g.add(flange);
+
+  const coluna = new THREE.Mesh(new THREE.CylinderGeometry(.085, .085, 1.5, 16), met(0xc6ccd2, .24));
+  coluna.position.y = .79; g.add(coluna);
+
+  /* volante de abrir/fechar, no topo da coluna */
+  const volante = new THREE.Mesh(new THREE.TorusGeometry(.15, .034, 8, 20), met(0x9aa0a6, .38));
+  volante.rotation.x = Math.PI / 2; volante.position.y = 1.58; g.add(volante);
+
+  const braco = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, BRACO, 14), met(0xc6ccd2, .24));
+  braco.rotation.x = Math.PI / 2;                      // deita o cilindro no eixo Z
+  braco.position.set(0, 1.46, op.para * BRACO / 2); g.add(braco);
+
+  const bico = new THREE.Mesh(new THREE.CylinderGeometry(.055, .048, .26, 14), met(0xc6ccd2, .24));
+  bico.position.set(0, 1.33, op.para * BRACO); g.add(bico);
+
+  /* --- béquer embaixo do bico --- */
+  const zb = op.para * BRACO;
+  const copo = new THREE.Mesh(new THREE.CylinderGeometry(.34, .31, .86, 22, 1, true), vidro());
+  copo.position.set(0, .45, zb); g.add(copo);
+  const fundo = new THREE.Mesh(new THREE.CylinderGeometry(.31, .31, .06, 22), vidro());
+  fundo.position.set(0, .05, zb); g.add(fundo);
+  const liquido = new THREE.Mesh(new THREE.CylinderGeometry(.30, .28, .30, 22),
+    toon(op.corGota, { transparent:true, opacity:.72 }));
+  liquido.position.set(0, .21, zb); g.add(liquido);
+
+  /* --- gotas: pool fixo, recicladas ao bater no líquido --- */
+  const Y_BICO = 1.19, Y_AGUA = .38;
+  const geoG = new THREE.SphereGeometry(.05, 10, 8);
+  const matG = toon(op.corGota, { transparent:true, opacity:.9 });
+  const MAXG = 16, gotas = [];
+  for(let i = 0; i < MAXG; i++){
+    const m = new THREE.Mesh(geoG, matG);
+    m.scale.y = 1.4;                                   // gota, não bolinha
+    m.visible = false; m.userData.viva = false;
+    m.position.z = zb;
+    g.add(m); gotas.push(m);
+  }
+
+  let taxa = op.taxa, acumulador = 0;
+  function nascer(){
+    for(let i = 0; i < MAXG; i++){
+      const m = gotas[i];
+      if(m.userData.viva) continue;
+      m.position.set(0, Y_BICO, zb);
+      m.userData.viva = true; m.userData.vy = 0;
+      m.visible = true;
+      return;
+    }
+  }
+  function atualizar(dt){
+    acumulador += taxa * dt;
+    while(acumulador >= 1){ acumulador -= 1; nascer(); }
+    for(let i = 0; i < MAXG; i++){
+      const m = gotas[i];
+      if(!m.userData.viva) continue;
+      m.userData.vy -= 7.2 * dt;                       // gravidade "de cena"
+      m.position.y += m.userData.vy * dt;
+      if(m.position.y <= Y_AGUA){ m.userData.viva = false; m.visible = false; }
+    }
+  }
+
+  return { grupo:g, atualizar, setTaxa(v){ taxa = v; }, zBico: op.z + zb };
+}
+
+/* Monta as duas torneiras. Idempotente: rodarStory rearma cues quando o áudio
+   volta no tempo, e sem esta guarda um seek montaria tudo de novo. */
+function mostrarTorneiras(){
+  if(torneiras || !raizCena) return torneiras;
+
+  const g = new THREE.Group();
+  /* A à ESQUERDA da tela e B à direita: nesta câmera o eixo horizontal é o Z
+     invertido, então B (a rápida) fica no z menor. */
+  const A = criarTorneira({ x:-.4, z:-0.3, para:-1, taxa:0.8, corGota:CORES.frio });
+  const B = criarTorneira({ x:-.4, z:-2.9, para: 1, taxa:3.6, corGota:CORES.quente });
+  g.add(A.grupo); g.add(B.grupo);
+
+  g.add(criarRotulo3D('A', -.4, 2.25, -0.3, '#6fb7ff'));
+  g.add(criarRotulo3D('B', -.4, 2.25, -2.9, '#ff9d33'));
+
+  raizCena.add(g);
+  configurarSombras(g);
+  atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); });
+
+  torneiras = { grupo:g, A, B };
+  return torneiras;
 }
 
 /* Sprite de texto (rótulo A / B / dicas na cena). */
@@ -2995,6 +3115,11 @@ const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, 
    nasce colada na borda da tela. */
 const CAM_QUADRO_DEF_P = { theta:-0.01, phi: 1.28, dist:  6.4, target:[0.7, 0.2, -1.8] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
+/* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
+   do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
+   negativo o z, mais à direita o objeto aparece. É por isso que a torneira B
+   — a rápida, que precisa ficar à direita — está no z menor. */
+const CAM_TORNEIRAS = { theta: 1.50, phi: 1.17, dist:  9.0, target:[-0.4, -0.1, -1.9] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
@@ -3648,6 +3773,26 @@ function figColisao(certa){
 }
 
 const QUIZZES = {
+  /* --------------------------------------------------------------------
+     Pergunta única do fim da dialogo1. Sem `faixa`: o áudio da pergunta é
+     a própria dialogo1, que acabou de tocar, então as alternativas já
+     entram reveladas. Sem `cena`/`camera` para não tirar as torneiras de
+     quadro — é olhando para elas que se responde.
+     -------------------------------------------------------------------- */
+  torneiras: {
+    titulo: 'Torneiras',
+    /* Sem isto, terminarQuiz() aplicaria o placar e pularia direto para o
+       encerramento do app. Aqui a pergunta só devolve o comando ao aluno. */
+    aoTerminar: ()=> botaoAudioPronto(true),
+    itens: [
+      { tipo:'alternativas',
+        enunciado:'Qual torneira goteja mais rápido?',
+        alternativas:[ { txt:'Torneira A' }, { txt:'Torneira B' } ],
+        correta:1, duasCol:true,
+        faixaAcerto:'dialogo1R', faixaErro:'dialogo1W' }
+    ]
+  },
+
   quiz1: {
     titulo: 'Quiz — Cinética Química',
     itens: [
@@ -3782,7 +3927,11 @@ function proximoItemQuiz(){
 }
 
 function terminarQuiz(){
+  /* Lido ANTES de fecharQuiz(), que zera quizAtivo. */
+  const aoTerminar = QUIZZES[quizAtivo] && QUIZZES[quizAtivo].aoTerminar;
   fecharQuiz();
+  if(aoTerminar){ aoTerminar(); return; }
+
   /* placar rápido + segue para o encerramento */
   const total = QUIZZES.quiz1.itens.length;
   tituloSecao(quizAcertos + ' / ' + total, quizAcertos === total
@@ -4157,12 +4306,19 @@ const EVENTOS = {
                        playSfx('pop', .35); } },
 
     /* 4 s → 10 s: a definição é digitada no quadro, letra a letra. */
-    { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 10) }
+    { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 10) },
 
-    /* NÃO acrescente cue de câmera aqui. Depois dos 10 s a faixa segue só com
-       o áudio, e o enquadramento fica parado até o fim: a câmera só se mexe
-       quando o roteiro mandar, nunca sozinha no meio da narração. Tinha um
-       zoom out para CAM_GERAL em t=12 e ele foi removido por isso. */
+    /* 17 s: as torneiras são montadas FORA de quadro, para já estarem
+       pingando (e com ritmos diferentes) quando a câmera chegar nelas. */
+    { t:17.0, fn:()=> mostrarTorneiras() },
+
+    /* 20 s: aí sim a câmera vai vê-las. Este e o cue de t=0 são os ÚNICOS
+       movimentos de câmera da faixa — nada de mexer no enquadramento por
+       conta própria no meio da narração. */
+    { t:20.0, fn:()=> irParaCamera(CAM_TORNEIRAS, true, 1800) }
+
+    /* A pergunta "Qual torneira goteja mais rápido?" não é cue: ela entra no
+       fim do áudio, por aoTerminarFaixa(). */
   ]),
 
   /* ------------------------------------------------------------------ */
@@ -4456,12 +4612,17 @@ function aoTerminarFaixa(){
   /* Dentro do quiz, quem manda é a engine (ramos R/W, próxima questão…). */
   if(quizAtivo){ quizAoTerminarFaixa(id); return; }
 
-  /* A chamada do quiz é a EXCEÇÃO combinada: em vez de esperar clique, ela
-     abre as questões sozinha. Todas as outras faixas caem no comportamento
-     padrão — o botão de áudio vira play e espera. */
+  /* EXCEÇÕES combinadas: em vez de esperar clique, estas faixas emendam
+     sozinhas numa pergunta. Todas as outras caem no padrão — o botão de
+     áudio vira play e espera. */
   if(id === 'quiz1'){
     esconder('legenda');
     abrirQuiz('quiz1');
+    return;
+  }
+  if(id === 'dialogo1'){
+    esconder('legenda');
+    abrirQuiz('torneiras');       // "Qual torneira goteja mais rápido?"
     return;
   }
   botaoAudioPronto(true);
@@ -4515,8 +4676,11 @@ function avancarFaixa(){
   if(id === 'encerramento'){ tocarFaixa(0); return; }   // assistir de novo
   if(id === 'quiz1'){ abrirQuiz('quiz1'); return; }
 
+  /* Pula os ramos de resposta (acerto/erro) e o bloco do quiz: eles são
+     tocados pela engine, nunca pela navegação linear do botão de play. */
   let prox = faixaAtual + 1;
-  while(prox < FAIXAS.length && /^q1[a-f]/.test(FAIXAS[prox].id)) prox++;
+  while(prox < FAIXAS.length &&
+        (FAIXAS[prox].ramo || /^q1[a-f]/.test(FAIXAS[prox].id))) prox++;
   tocarFaixa(prox < FAIXAS.length ? prox : 0);
 }
 
