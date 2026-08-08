@@ -295,8 +295,11 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 /* ==========================================================================
    QUIZ
    ========================================================================== */
+/* O -40px sobe o card uma linha e meia do enunciado (1.45 de entrelinha sobre
+   ~18px de fonte no celular). Solta a pergunta do meio da tela e deixa o
+   respiro embaixo, onde ficam a legenda e o botão de áudio. */
 #quiz{
-  left:50%; top:50%; transform:translate(-50%,-50%);
+  left:50%; top:50%; transform:translate(-50%, calc(-50% - 40px));
   width:min(96vw,880px); z-index:35;
 }
 .quiz-card{
@@ -816,7 +819,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.8.4</div>
+  <div id="versao">v1.9.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -889,7 +892,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.8.4';
+const VERSAO = 'v1.9.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2000,7 +2003,15 @@ const QUADRO_TXT = {
   revelado:  0,
   caret:     false,
   reveladoRotulo: 0,
-  caretRotulo:    false
+  caretRotulo:    false,
+
+  /* Bloco que está SAINDO de cena, deslizando para fora pela esquerda. É uma
+     cópia congelada do rótulo + definição anteriores: guardá-la à parte é o
+     que permite o texto novo já entrar no mesmo lugar enquanto o velho ainda
+     desliza. `saindoDesloca` é em px de textura. */
+  saindoRotulo:   '',
+  saindoDef:      '',
+  saindoDesloca:  0
 };
 
 /* Um layout por orientação. u/v são frações da textura (0..1).
@@ -2147,8 +2158,28 @@ function pintarQuadro(){
     c.fillStyle = gl; c.fillRect(ESQ, H * L.fileteV, LARG, 3);
   }
 
-  /* ---- 4) rótulo ("Definição:"), também revelado letra a letra ---- */
   c.textAlign = 'left';
+
+  /* ---- 3.5) bloco que está saindo, deslizando para a esquerda ---- */
+  if(QUADRO_TXT.saindoRotulo || QUADRO_TXT.saindoDef){
+    const dx = -QUADRO_TXT.saindoDesloca;
+    if(QUADRO_TXT.saindoRotulo){
+      c.font = '800 ' + L.tamRotulo + 'px ' + FONTE;
+      c.fillStyle = '#ff9d33';
+      c.fillText(QUADRO_TXT.saindoRotulo, ESQ + dx, H * L.rotuloV);
+    }
+    if(QUADRO_TXT.saindoDef){
+      c.font = '600 ' + L.tamDef + 'px ' + FONTE;
+      c.fillStyle = '#f6ece9';
+      let y = H * L.defV;
+      quebrarLinhas(c, QUADRO_TXT.saindoDef, LARG).forEach((linha)=>{
+        c.fillText(linha, ESQ + dx, y);
+        y += L.linha;
+      });
+    }
+  }
+
+  /* ---- 4) rótulo ("Definição:"), também revelado letra a letra ---- */
   if(QUADRO_TXT.rotulo){
     c.font = '800 ' + L.tamRotulo + 'px ' + FONTE;
     c.fillStyle = '#ff9d33';
@@ -2230,12 +2261,72 @@ function quadroRevelar(n, caret, campo){
   pintarQuadro();
 }
 
+/* --------------------------------------------------------------------------
+   TROCA DE BLOCO — o rótulo e a definição atuais deslizam para fora pela
+   esquerda enquanto um rótulo NOVO já é digitado no lugar deles.
+
+   Roda em tempo REAL (segundos de relógio), e não em tempo de áudio como a
+   digitação normal: ela é disparada por um clique de resposta, num momento em
+   que a faixa já acabou e tempoAtual() está congelado na duração — uma
+   animação presa nesse relógio nunca sairia do lugar.
+   -------------------------------------------------------------------------- */
+let _quadroSaida = null;
+
+function quadroTrocarRotulo(novo, ms){
+  /* Congela o que sai. A definição sai pelo que já estava revelado. */
+  QUADRO_TXT.saindoRotulo  = QUADRO_TXT.rotulo;
+  QUADRO_TXT.saindoDef     = QUADRO_TXT.definicao.slice(0, QUADRO_TXT.revelado);
+  QUADRO_TXT.saindoDesloca = 0;
+
+  QUADRO_TXT.definicao = ''; QUADRO_TXT.revelado = 0; QUADRO_TXT.caret = false;
+  QUADRO_TXT.rotulo = novo || ''; QUADRO_TXT.reveladoRotulo = 0;
+  QUADRO_TXT.caretRotulo = !!novo;
+
+  _quadroSaida = { t:0, durSai:(ms || 700)/1000, entra:novo || '', durEntra:1.1 };
+  pintarQuadro();
+}
+
+function tickQuadroSaida(dt){
+  if(!_quadroSaida) return;
+  const s = _quadroSaida;
+  s.t += dt;
+
+  /* saída: desliza 1.15 larguras de textura, para sumir mesmo nas telas que
+     enxergam a borda esquerda do quadro */
+  const ps = clamp(s.t / s.durSai, 0, 1);
+  const desloca = easeInOutCubic(ps) * QUADRO_W * 1.15;
+
+  /* entrada: o rótulo novo é revelado letra a letra, começando junto */
+  const pe = clamp(s.t / s.durEntra, 0, 1);
+  const n  = Math.floor(pe * s.entra.length);
+  const piscando = pe < 1 && (Math.floor(s.t * 2) % 2 === 0);
+
+  const mudou = Math.round(desloca) !== Math.round(QUADRO_TXT.saindoDesloca) ||
+                n !== QUADRO_TXT.reveladoRotulo ||
+                piscando !== QUADRO_TXT.caretRotulo;
+  if(mudou){
+    QUADRO_TXT.saindoDesloca  = desloca;
+    QUADRO_TXT.reveladoRotulo = n;
+    QUADRO_TXT.caretRotulo    = piscando;
+    pintarQuadro();
+  }
+
+  if(ps >= 1 && pe >= 1){
+    QUADRO_TXT.saindoRotulo = ''; QUADRO_TXT.saindoDef = ''; QUADRO_TXT.saindoDesloca = 0;
+    QUADRO_TXT.reveladoRotulo = s.entra.length; QUADRO_TXT.caretRotulo = false;
+    _quadroSaida = null;
+    pintarQuadro();
+  }
+}
+
 /* Volta o quadro ao estado "só o título" — usado quando o painel de gráfico
    vai cobrir o quadro e o texto embaixo viraria sujeira visual. */
 function quadroLimpar(){
+  _quadroSaida = null;
   QUADRO_TXT.rotulo = ''; QUADRO_TXT.definicao = '';
   QUADRO_TXT.revelado = 0; QUADRO_TXT.caret = false;
   QUADRO_TXT.reveladoRotulo = 0; QUADRO_TXT.caretRotulo = false;
+  QUADRO_TXT.saindoRotulo = ''; QUADRO_TXT.saindoDef = ''; QUADRO_TXT.saindoDesloca = 0;
   pintarQuadro();
 }
 
@@ -3819,13 +3910,17 @@ const QUIZZES = {
   torneiras: {
     titulo: 'Torneiras',
     /* Sem isto, terminarQuiz() aplicaria o placar e pularia direto para o
-       encerramento do app. Aqui a pergunta só devolve o comando ao aluno. */
-    aoTerminar: ()=> botaoAudioPronto(true),
+       encerramento do app. Aqui a pergunta só devolve o comando ao aluno —
+       e marca que o próximo play deve voltar a câmera para o quadro. */
+    aoTerminar: ()=>{ camVoltarAoQuadro = true; botaoAudioPronto(true); },
     itens: [
       { tipo:'alternativas',
         enunciado:'Qual torneira goteja mais rápido?',
         alternativas:[ { txt:'Torneira A' }, { txt:'Torneira B' } ],
         correta:1, compacto:true,
+        /* Ao responder — certo ou errado — "Definição:" e o texto branco
+           saem de cena pela esquerda e "Velocidade:" é escrito no lugar. */
+        aoResponder: ()=> quadroTrocarRotulo('Velocidade:', 700),
         faixaAcerto:'dialogo1R', faixaErro:'dialogo1W' }
     ]
   },
@@ -4082,6 +4177,9 @@ function responder(item, escolha, botao, container){
   quizRespondido = true;
 
   const certo = (escolha === item.correta);
+  /* Gancho por item: o que a CENA faz ao receber a resposta, seja ela qual
+     for. Na pergunta das torneiras é aqui que o quadro troca de bloco. */
+  if(item.aoResponder){ try { item.aoResponder(certo); } catch(e){ console.error(e); } }
   const filhos = Array.prototype.slice.call(container.children);
   /* '.vis' é o que dá opacity:1. Se a resposta chegar antes de revelarOpcoes()
      terminar (áudio curto, toque rápido), a alternativa marcada ficaria
@@ -4343,21 +4441,22 @@ const EVENTOS = {
                        quadroDefinir({ titulo:'Cinética Química', rotulo:'', definicao:'' });
                        irParaCamera(camDefinicao(), true, 1600); orbitaSuave = 0; } },
 
-    /* Câmera já chegou: o rótulo é DIGITADO, igual à definição. */
-    { t:2.0,  fn:()=>{ digitarNoQuadro('Definição:', 2, 3.2, 'rotulo');
+    /* 1.2 s: o rótulo começa a ser digitado, igual à definição. */
+    { t:1.2,  fn:()=>{ digitarNoQuadro('Definição:', 1.2, 2.4, 'rotulo');
                        playSfx('pop', .35); } },
 
     /* 4 s → 10 s: a definição é digitada no quadro, letra a letra. */
     { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 10) },
 
-    /* 17 s: as torneiras são montadas FORA de quadro, para já estarem
-       pingando (e com ritmos diferentes) quando a câmera chegar nelas. */
-    { t:17.0, fn:()=> mostrarTorneiras() },
+    /* 14 s: as torneiras são montadas FORA de quadro. Três segundos de
+       antecedência para que, quando a câmera chegar, as duas já estejam
+       pingando e a diferença de ritmo se leia na hora. */
+    { t:14.0, fn:()=> mostrarTorneiras() },
 
-    /* 20 s: aí sim a câmera vai vê-las. Este e o cue de t=0 são os ÚNICOS
+    /* 17 s: a câmera vai vê-las. Este e o cue de t=0 são os ÚNICOS
        movimentos de câmera da faixa — nada de mexer no enquadramento por
        conta própria no meio da narração. */
-    { t:20.0, fn:()=> irParaCamera(CAM_TORNEIRAS, true, 1800) }
+    { t:17.0, fn:()=> irParaCamera(CAM_TORNEIRAS, true, 1800) }
 
     /* A pergunta "Qual torneira goteja mais rápido?" não é cue: ela entra no
        fim do áudio, por aoTerminarFaixa(). */
@@ -4705,6 +4804,10 @@ function botaoAudioPronto(v){
   const b = $('botaoAudio'); if(b) b.classList.toggle('pronto', !!v);
 }
 
+/* Marcado no fim da pergunta das torneiras: o próximo play traz a câmera de
+   volta para o quadro antes de seguir — é lá que "Velocidade:" foi escrito. */
+let camVoltarAoQuadro = false;
+
 /* A faixa acabou? Vale para o mp3 real e para o relógio virtual. */
 function faixaTerminou(){
   const d = duracaoAtual();
@@ -4738,6 +4841,10 @@ $('botaoAudio').addEventListener('click', ()=>{
        questão). Aqui o botão só toca e pausa — avançar atropelaria o fluxo. */
     if(quizAtivo) return;
     botaoAudioPronto(false);
+    if(camVoltarAoQuadro){
+      camVoltarAoQuadro = false;
+      irParaCamera(camDefinicao(), true, 1600);
+    }
     avancarFaixa();
     return;
   }
@@ -4834,6 +4941,7 @@ function animar(){
   tickStory();              // cues por tempo de áudio
   tickDigitacoes();         // máquina de escrever
   tickBotaoAudio();         // símbolo + anel de progresso do botão de áudio
+  tickQuadroSaida(dt);      // troca de bloco no quadro (roda em tempo real)
   tickFades(dt);            // fade de objetos 3D (esvaziar/repor a bancada)
   tickCamera();             // easing da câmera
   tickOrbita(dt);           // órbita lenta
