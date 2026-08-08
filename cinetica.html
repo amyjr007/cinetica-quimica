@@ -295,11 +295,11 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 /* ==========================================================================
    QUIZ
    ========================================================================== */
-/* O -40px sobe o card uma linha e meia do enunciado (1.45 de entrelinha sobre
-   ~18px de fonte no celular). Solta a pergunta do meio da tela e deixa o
-   respiro embaixo, onde ficam a legenda e o botão de áudio. */
+/* -92px = três linhas e meia do enunciado (1.45 de entrelinha sobre ~18px de
+   fonte no celular). Solta a pergunta do meio da tela e deixa o respiro
+   embaixo, onde ficam a legenda e o botão de áudio. */
 #quiz{
-  left:50%; top:50%; transform:translate(-50%, calc(-50% - 40px));
+  left:50%; top:50%; transform:translate(-50%, calc(-50% - 92px));
   width:min(96vw,880px); z-index:35;
 }
 .quiz-card{
@@ -819,7 +819,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.10.0</div>
+  <div id="versao">v1.11.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -892,7 +892,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.10.0';
+const VERSAO = 'v1.11.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2090,20 +2090,18 @@ const LAYOUT_QUADRO = {
        título      -15%, e no total 2 + 1.5 linhas à esquerda
                    (.550 -> .484 -> .4395). As 1.5 usam a entrelinha ATUAL
                    (57px), que é o espaçamento que se vê na tela.
-       rótulo/def  -10% e 0.75 linha à esquerda. A margem esquerda do texto é
-                   o gargalo: a borda da tela fica em ndcX -1.00 e o texto
-                   nasce a -0.93. Referência de medida = celular em pé
-                   390x844, onde 0.75 linha para em -0.98. ATENÇÃO ao mexer:
-                   1 linha inteira já iria a -1.04 e cortaria o primeiro
-                   caractere; e em aparelhos de proporção mais estreita
-                   (412x915) este valor já encosta em -1.01. O valor seguro
-                   em qualquer celular é 0.5 linha (colEsq .2596).
-     A entrelinha acompanha o corpo da definição (41 -> 37 pediu 57 -> 51),
-     senão o bloco ficaria frouxo com a letra menor. */
-  retrato:  { colEsq:.2514, colDir:.8424, tituloU:.4395,
-              tamTitulo:66, tamRotulo:48, tamDef:37,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:51,
-              perguntaV:.720 }
+       rótulo/def  a coluna é recalibrada a cada troca de CAM_QUADRO_DEF_P.
+                   Com a câmera atual, .280 põe a margem esquerda em ndcX
+                   -0.93 e .975 põe a direita em +0.92 — sete por cento de
+                   folga de cada lado. Encostar em -1.00 corta o primeiro
+                   caractere de cada linha.
+     Referência de medida: celular em pé 390x844.
+     A entrelinha acompanha o corpo da definição (37 -> 52 pediu 51 -> 72), e
+     a pergunta desceu junto (.720 -> .760) para não encostar no item 3. */
+  retrato:  { colEsq:.280, colDir:.975, tituloU:.4395,
+              tamTitulo:66, tamRotulo:48, tamDef:52,
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:72,
+              perguntaV:.760 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
@@ -2116,7 +2114,17 @@ function texturaQuadro(){
   _cvQuadro.width = QUADRO_W; _cvQuadro.height = QUADRO_H;
   _ctxQuadro = _cvQuadro.getContext('2d');
   _texQuadro = new THREE.CanvasTexture(_cvQuadro);
-  _texQuadro.anisotropy = 8;
+  /* NITIDEZ DO TEXTO. A câmera vê o quadro com o texto MINIFICADO (mais
+     texels do que pixels de tela). Nessa faixa o mipmap entra em ação e o
+     filtro trilinear mistura níveis borrados — é o que fazia as letras
+     parecerem de baixa resolução. Sem mipmap e com LinearFilter a amostragem
+     sai direto da imagem em tamanho cheio: alia um pouco quando a câmera se
+     move, mas o texto é lido parado, e aí fica nítido.
+     A anisotropia máxima do aparelho ajuda no que sobra de obliquidade. */
+  _texQuadro.generateMipmaps = false;
+  _texQuadro.minFilter = THREE.LinearFilter;
+  _texQuadro.magFilter = THREE.LinearFilter;
+  _texQuadro.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 8;
   TEXTURAS_COMPARTILHADAS.add(_texQuadro);   // sobrevive ao desmonte das cenas
   pintarQuadro();
   return _texQuadro;
@@ -2496,11 +2504,23 @@ function metal(op){
   });
 }
 
+/* --------------------------------------------------------------------------
+   RESOLUÇÃO DE RENDER. Estava travada em 2, e celular moderno tem densidade
+   de 2.6 a 3.5 — a cena era desenhada com dois terços dos pixels do aparelho
+   e depois esticada, o que amassa todo traço fino: o texto do quadro, os
+   rótulos, o contorno toon.
+   O teto de 3 é o botão de PERFORMANCE desta cena: cada degrau custa o
+   quadrado (de 2 para 3 são 2.25x mais pixels a sombrear). Se algum aparelho
+   engasgar, é o primeiro número a baixar.
+   -------------------------------------------------------------------------- */
+const DPR_TETO = 3;
+function dprCena(){ return Math.min(DPR_TETO, window.devicePixelRatio || 1); }
+
 /* --------------------------- inicialização 3D --------------------------- */
 function iniciar3D(){
   const cv = $('cena3d');
   renderer = new THREE.WebGLRenderer({ canvas:cv, antialias:true, alpha:false });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(dprCena());
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   /* Sombras: é o que dava mais falta. Sem elas os béqueres pareciam colados
      na bancada por Photoshop, sem peso e sem contato com o tampo.
@@ -2571,9 +2591,9 @@ function iniciar3D(){
 
 function aoRedimensionar(){
   const w = window.innerWidth, h = window.innerHeight;
-  if(renderer){ renderer.setSize(w, h, false); }
+  if(renderer){ renderer.setPixelRatio(dprCena()); renderer.setSize(w, h, false); }
   if(camera){ camera.aspect = w / h; camera.updateProjectionMatrix(); }
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const dpr = dprCena();
   cvConfete.width = w * dpr; cvConfete.height = h * dpr;
   cvConfete.style.width = w + 'px'; cvConfete.style.height = h + 'px';
   /* Girar o aparelho troca o layout do texto do quadro (coluna larga em
@@ -3375,7 +3395,7 @@ const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, 
    câmera, em qualquer distância. Por isso o layout retrato de pintarQuadro()
    tem a coluna deslocada para a direita — sem isso a margem esquerda do texto
    nasce colada na borda da tela. */
-const CAM_QUADRO_DEF_P = { theta:-0.01, phi: 1.28, dist:  6.4, target:[0.7, 0.2, -1.8] };
+const CAM_QUADRO_DEF_P = { theta: 0.02, phi: 1.29, dist:  7.7, target:[1.5, -0.4, -1.6] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
