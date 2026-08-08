@@ -755,7 +755,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.3.0</div>
+  <div id="versao">v1.3.1</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -813,7 +813,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.3.0';
+const VERSAO = 'v1.3.1';
 
 /* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
@@ -832,10 +832,18 @@ const CORES = {
 
 /* Definição que a faixa 'dialogo1' digita NO QUADRO (não é legenda de tela).
    Fica aqui, e não solta dentro da coreografia, porque o mesmo texto alimenta
-   o campo `texto` da faixa (usado como fallback quando não há mp3). */
+   o campo `texto` da faixa (usado como fallback quando não há mp3).
+
+   Os \n são quebras OBRIGATÓRIAS: no quadro a frase é cortada por sentido,
+   não por onde a largura acabou. Deixar a quebra automática decidir dava uma
+   mancha de texto larga demais e com corte no meio de "estuda a velocidade".
+   Cada trecho ainda pode quebrar sozinho se não couber (é o que salva o
+   retrato, cuja coluna é bem mais estreita). */
 const DEF_CINETICA =
-  'é a parte da Química que estuda a velocidade de uma reação química, ' +
-  'os fatores que a afetam e as formas de controlá-la.';
+  'é a parte da Química que estuda\n' +
+  'a velocidade de uma reação química,\n' +
+  'os fatores que a afetam\n' +
+  'e as formas de controlá-la.';
 
 /* ==========================================================================
    2. FAIXAS — roteiro linear
@@ -848,8 +856,9 @@ const DEF_CINETICA =
    ========================================================================== */
 const FAIXAS = [
   /* --- Parte 1: conceitos --- */
+  /* Sem os \n: aqui o texto é legenda de DOM, e a quebra do quadro não vale. */
   { id:'dialogo1', arquivo:'audios/dialogo1.mp3', titulo:'O que a Cinética estuda', dur:29,
-    texto:'Cinética Química ' + DEF_CINETICA },
+    texto:'Cinética Química ' + DEF_CINETICA.replace(/\n/g, ' ') },
 
   { id:'velocidade', arquivo:'audios/velocidade.mp3', titulo:'Velocidade de reação', dur:42,
     texto:'Velocidade média de reação é o quanto a concentração muda dividido pelo tempo gasto: v = ΔC / Δt, em mol por litro por segundo.' },
@@ -1858,8 +1867,12 @@ const QUADRO_TXT = {
 const LAYOUT_QUADRO = {
   paisagem: { colEsq:.095, colDir:.905, tamTitulo:104, tamRotulo:68, tamDef:68,
               tituloV:.255, fileteV:.305, rotuloV:.445, defV:.575, linha:92 },
-  retrato:  { colEsq:.200, colDir:.800, tamTitulo:84, tamRotulo:58, tamDef:56,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:78 }
+  /* Fonte menor no retrato: a coluna tem 1152px úteis e a maior linha fixa da
+     definição tem 35 caracteres — a 52px ela cabe mesmo se a Segoe UI vier
+     mais larga do que o previsto, e a quebra combinada continua igual à da
+     paisagem em vez de virar uma linha órfã. */
+  retrato:  { colEsq:.200, colDir:.800, tamTitulo:84, tamRotulo:58, tamDef:52,
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:74 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
@@ -1881,20 +1894,31 @@ function texturaQuadro(){
 /* Quebra o texto em linhas usando a largura REAL medida no canvas.
    A quebra é calculada sobre o texto COMPLETO, nunca sobre o pedaço já
    revelado: senão as linhas se reorganizariam a cada letra e o texto
-   "pularia" durante a digitação. */
+   "pularia" durante a digitação.
+
+   '\n' é quebra obrigatória — é assim que o autor manda no corte da frase.
+   Dentro de cada trecho ainda vale a quebra por largura, para o trecho não
+   estourar a coluna estreita do retrato.
+
+   IMPORTANTE para a digitação: tanto o espaço quanto o '\n' ocupam UM
+   caractere do texto original, e é por isso que pintarQuadro() desconta
+   `linha.length + 1` por linha ao contar o que já foi revelado. */
 function quebrarLinhas(c, txt, larguraMax){
-  const palavras = String(txt).split(/\s+/).filter(Boolean);
   const linhas = [];
-  let atual = '';
-  for(let i = 0; i < palavras.length; i++){
-    const teste = atual ? atual + ' ' + palavras[i] : palavras[i];
-    if(atual && c.measureText(teste).width > larguraMax){
-      linhas.push(atual); atual = palavras[i];
-    } else {
-      atual = teste;
+  String(txt).split('\n').forEach((trecho)=>{
+    const palavras = trecho.split(/\s+/).filter(Boolean);
+    if(!palavras.length){ linhas.push(''); return; }
+    let atual = '';
+    for(let i = 0; i < palavras.length; i++){
+      const teste = atual ? atual + ' ' + palavras[i] : palavras[i];
+      if(atual && c.measureText(teste).width > larguraMax){
+        linhas.push(atual); atual = palavras[i];
+      } else {
+        atual = teste;
+      }
     }
-  }
-  if(atual) linhas.push(atual);
+    if(atual) linhas.push(atual);
+  });
   return linhas;
 }
 
