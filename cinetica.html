@@ -755,7 +755,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.5.1</div>
+  <div id="versao">v1.5.2</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -813,7 +813,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.5.1';
+const VERSAO = 'v1.5.2';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -1904,17 +1904,24 @@ const LAYOUT_QUADRO = {
               tamTitulo:104, tamRotulo:68, tamDef:68,
               tituloV:.255, fileteV:.305, rotuloV:.445, defV:.575, linha:92 },
 
-  /* RETRATO — calibrado para a CAM_QUADRO_DEF_P.
-     A coluna está deslocada para a DIREITA (.225–.965 em vez de .200–.800)
-     porque o eixo daquela câmera é oblíquo: o centro do quadro aparece 1.75
-     à esquerda do centro da tela. Com a coluna antiga, a margem esquerda do
-     texto nascia exatamente em cima da borda da tela.
-     As fontes subiram junto (52→64) porque a câmera nova observa o quadro de
-     24 de distância contra 17 da anterior — sem compensar, a definição
-     encolhia 41% e ficava com 11px de tela. */
-  retrato:  { colEsq:.240, colDir:.970, tituloU:.550,
-              tamTitulo:112, tamRotulo:76, tamDef:64,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:90 }
+  /* RETRATO — calibrado para a CAM_QUADRO_DEF_P. ESTES SÃO OS KNOBS:
+       colEsq/colDir  movem e estreitam a coluna de texto
+       tituloU        move SÓ o título na horizontal
+       tituloV/rotuloV/defV   sobem e descem cada bloco
+
+     A coluna é deslocada para a direita porque o eixo daquela câmera é
+     oblíquo: o centro do quadro (x = 0) aparece 0.74 à esquerda do centro
+     da tela. Com a coluna simétrica em .200–.800, a margem esquerda do texto
+     nascia por cima da borda da tela.
+     Do jeito que está, o centro da coluna (.5715) cai praticamente em cima
+     do centro da tela, e tituloU .550 deixa o título um tico à esquerda dele.
+
+     Fontes 30% menores que a calibragem anterior. Não é perda de tamanho na
+     tela: a câmera nova olha o quadro de 16.6 de distância contra 24.1 da
+     anterior, então a definição sai com ~14px de tela nos dois casos. */
+  retrato:  { colEsq:.276, colDir:.867, tituloU:.550,
+              tamTitulo:78, tamRotulo:53, tamDef:45,
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:63 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
@@ -2878,7 +2885,7 @@ const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, 
    câmera, em qualquer distância. Por isso o layout retrato de pintarQuadro()
    tem a coluna deslocada para a direita — sem isso a margem esquerda do texto
    nasce colada na borda da tela. */
-const CAM_QUADRO_DEF_P = { theta:-0.01, phi: 1.34, dist:  9.8, target:[1.7, -2.7, -1.0] };
+const CAM_QUADRO_DEF_P = { theta:-0.01, phi: 1.28, dist:  6.4, target:[0.7, 0.2, -1.8] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
