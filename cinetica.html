@@ -805,7 +805,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.8.0</div>
+  <div id="versao">v1.8.1</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -878,7 +878,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.8.0';
+const VERSAO = 'v1.8.1';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2688,6 +2688,12 @@ function trazerEquipamentos(ms){
    bancada.equipamentos. A abertura esvazia a bancada com um fade e deixa
    aquele grupo invisível; se as torneiras morassem lá, nasceriam apagadas.
    ========================================================================== */
+/* Ponta ESQUERDA do tampo (que vai até x = -6.5), a dois passos da parede
+   lateral das fórmulas (x = -7.4). Nesta posição o mural vira o fundo das
+   torneiras em vez de um vazio distante. Anda junto com o alvo de
+   CAM_TORNEIRAS — mover um sem o outro desenquadra a cena. */
+const TORNEIRA_X = -5.4;
+
 let torneiras = null;          // { grupo, A, B } enquanto a cena viver
 
 /* op.para = +1 ou -1: para que lado do eixo Z o braço aponta. Como as duas
@@ -2772,12 +2778,12 @@ function mostrarTorneiras(){
   const g = new THREE.Group();
   /* A à ESQUERDA da tela e B à direita: nesta câmera o eixo horizontal é o Z
      invertido, então B (a rápida) fica no z menor. */
-  const A = criarTorneira({ x:-.4, z:-0.3, para:-1, taxa:0.8, corGota:CORES.frio });
-  const B = criarTorneira({ x:-.4, z:-2.9, para: 1, taxa:3.6, corGota:CORES.quente });
+  const A = criarTorneira({ x:TORNEIRA_X, z:-0.3, para:-1, taxa:0.8, corGota:CORES.frio });
+  const B = criarTorneira({ x:TORNEIRA_X, z:-2.9, para: 1, taxa:3.6, corGota:CORES.quente });
   g.add(A.grupo); g.add(B.grupo);
 
-  g.add(criarRotulo3D('A', -.4, 2.25, -0.3, '#6fb7ff'));
-  g.add(criarRotulo3D('B', -.4, 2.25, -2.9, '#ff9d33'));
+  g.add(criarRotulo3D('A', TORNEIRA_X, 2.25, -0.3, '#6fb7ff'));
+  g.add(criarRotulo3D('B', TORNEIRA_X, 2.25, -2.9, '#ff9d33'));
 
   raizCena.add(g);
   configurarSombras(g);
@@ -3118,8 +3124,10 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
    negativo o z, mais à direita o objeto aparece. É por isso que a torneira B
-   — a rápida, que precisa ficar à direita — está no z menor. */
-const CAM_TORNEIRAS = { theta: 1.50, phi: 1.17, dist:  9.0, target:[-0.4, -0.1, -1.9] };
+   — a rápida, que precisa ficar à direita — está no z menor.
+   O alvo em x acompanha TORNEIRA_X: como o olhar corre nesse eixo, mover as
+   torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe. */
+const CAM_TORNEIRAS = { theta: 1.50, phi: 1.17, dist:  9.0, target:[-5.4, -0.1, -1.9] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
