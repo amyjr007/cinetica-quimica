@@ -819,7 +819,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.11.1</div>
+  <div id="versao">v1.12.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -892,7 +892,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.11.1';
+const VERSAO = 'v1.12.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2096,12 +2096,13 @@ const LAYOUT_QUADRO = {
                    folga de cada lado. Encostar em -1.00 corta o primeiro
                    caractere de cada linha.
      Referência de medida: celular em pé 390x844.
-     A entrelinha acompanha o corpo da definição (37 -> 52 pediu 51 -> 72), e
-     a pergunta desceu junto (.720 -> .760) para não encostar no item 3. */
+     A entrelinha (90) é folgada de propósito, para a lista respirar. Cuidado:
+     ela empurra o item 3 para baixo, e `perguntaV` tem de descer junto ou os
+     dois se encostam — .791 deixa 40px de folga sobre o item 3. */
   retrato:  { colEsq:.280, colDir:.975, tituloU:.4395,
               tamTitulo:66, tamRotulo:48, tamDef:52,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:72,
-              perguntaV:.760 }
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:90,
+              perguntaV:.791 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
@@ -2534,7 +2535,13 @@ function iniciar3D(){
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(CORES.bg);
-  scene.fog = new THREE.Fog(CORES.bg, 14, 34);
+  /* SEM NÉVOA. Havia um Fog(14, 34) aqui, e ele era a causa do fundo
+     "embaçado" nos planos abertos: qualquer coisa além de 14 unidades já
+     começava a ser misturada com a cor do fundo, e além de 34 sumia de vez.
+     Com as câmeras atuais o quadro fica a mais de 40 da câmera — ou seja,
+     dentro da faixa em que a névoa apagava a sala inteira.
+     Se um dia voltar, tem de começar depois da distância da câmera mais
+     afastada, senão volta o mesmo problema. */
 
   camera = new THREE.PerspectiveCamera(48, window.innerWidth/window.innerHeight, .1, 200);
   relogio = new THREE.Clock();
@@ -2554,11 +2561,11 @@ function iniciar3D(){
   /* Ambiente. O chão da hemisférica é um marrom de madeira, não cinza: é a
      luz que ricocheteia do tampo e sobe. Sem esse quique, a barriga dos
      béqueres e a parte de baixo dos tripés ficavam mortas. */
-  scene.add(new THREE.HemisphereLight(0xfff0e6, 0x3a3026, .30));
+  scene.add(new THREE.HemisphereLight(0xfff0e6, 0x3a3026, .38));
 
   /* KEY — a janela/luminária principal, alta e à direita. É a única que
      projeta sombra: duas sombras cruzadas em cena de bancada viram sujeira. */
-  const key = new THREE.DirectionalLight(0xfff0d8, .52);
+  const key = new THREE.DirectionalLight(0xfff0d8, .58);
   key.position.set(5, 9, 6);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
@@ -2580,8 +2587,10 @@ function iniciar3D(){
   fill.position.set(-6, 4, -4); scene.add(fill);
 
   /* RIM: lâmpada do teto entre a bancada e a parede. Separa a silhueta dos
-     objetos do fundo escuro. */
-  const rim = new THREE.PointLight(0xffe9d6, .26, 20);
+     objetos do fundo escuro. Alcance de 34 e não mais 20: com as câmeras
+     abertas de agora, a sala inteira precisa estar dentro do raio dela,
+     senão as bordas do cenário caem no escuro. */
+  const rim = new THREE.PointLight(0xffe9d6, .30, 34);
   rim.position.set(0, 5.5, -3); scene.add(rim);
 
   irParaCamera(CAM_GERAL, false);
@@ -2699,9 +2708,9 @@ function criarSala(){
   /* O quadro carrega a textura de canvas onde o texto fica CRAVADO — ver
      texturaQuadro(). Como a textura é compartilhada e vive fora das cenas,
      o que estiver escrito sobrevive a toda remontagem de cena. */
-  /* fog:false — a névoa da cena começa em 14 e o quadro fica a 11 (paisagem)
-     ou 21 (retrato) da câmera da definição. Com névoa, o texto perderia mais
-     de um terço do contraste justo no enquadramento em pé. */
+  /* fog:false — hoje a cena não tem névoa, então isto não muda nada. Fica
+     como trava: se alguém reintroduzir Fog, o texto do quadro é a última
+     coisa que pode perder contraste com a distância. */
   const quadro = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 5.6),
     new THREE.MeshBasicMaterial({ map: texturaQuadro(), fog: false }));
   quadro.position.set(0, 3.4, -6.05); g.add(quadro);
@@ -3398,7 +3407,7 @@ const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, 
    câmera, em qualquer distância. Por isso o layout retrato de pintarQuadro()
    tem a coluna deslocada para a direita — sem isso a margem esquerda do texto
    nasce colada na borda da tela. */
-const CAM_QUADRO_DEF_P = { theta: 0.02, phi: 1.29, dist:  7.7, target:[1.5, -0.4, -1.6] };
+const CAM_QUADRO_DEF_P = { theta: 0.04, phi: 1.10, dist: 20.8, target:[7.0, -9.8, 1.4] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
@@ -3408,7 +3417,7 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
    as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
    Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
    um pouco acima do topo da tela. */
-const CAM_TORNEIRAS = { theta: 1.47, phi: 1.36, dist:  8.2, target:[-4.6, -1.6, -3.3] };
+const CAM_TORNEIRAS = { theta: 1.48, phi: 1.31, dist: 12.3, target:[-3.6, -4.9, -5.2] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
