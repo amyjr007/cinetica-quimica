@@ -161,7 +161,11 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
    ========================================================================== */
 #painelGrafico{
   left:50%; top:50%; transform:translate(-50%,-46%) scale(.92);
-  width:min(94vw,760px);
+  /* O 140vh é uma trava de ALTURA disfarçada de largura: os SVG têm viewBox
+     560x330, então a altura acompanha a largura (≈ w/1.7 + cabeçalho). Sem
+     ela, um celular DEITADO (tela baixa) esticaria o painel para 760px e o
+     gráfico sairia cortado em cima e embaixo. */
+  width:min(94vw,760px,140vh);
 }
 #painelGrafico.show{ transform:translate(-50%,-50%) scale(1); }
 #painelGrafico .moldura{
@@ -533,6 +537,52 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   opacity:0; visibility:hidden; transition:opacity .4s, visibility .4s;
 }
 #avisoAudio.show{ opacity:1; visibility:visible; }
+
+/* ==========================================================================
+   RETRATO (celular em pé) — v1.1.0
+   --------------------------------------------------------------------------
+   O app nasceu em paisagem e o manifest travava a orientação. Agora ele roda
+   nas duas, e o retrato precisa de três correções:
+
+   1) TIPOGRAFIA. Quase todo texto usa clamp(min, Nvw, max). Em pé, 1vw vale
+      ~3,9px num celular comum, então TODO clamp cai no valor mínimo e a
+      narração fica miúda. Aqui subimos só os mínimos — em paisagem nada muda.
+   2) GRÁFICOS SVG. O painel encolhe para 94vw (~366px) e o viewBox 560x330 é
+      reduzido junto, levando os rótulos a ~9px reais. Aumentamos as fontes
+      DENTRO do viewBox para compensar a redução.
+   3) FOLGA VERTICAL. Sobra altura em pé: a legenda desce um pouco e o painel
+      de gráfico volta ao centro exato, sem risco de encostar no rodapé.
+
+   A cena 3D já se vira sozinha: fatorRetrato() afasta a câmera quando o
+   aspecto fica menor que 1.5 (ver seção 8 do JS).
+   ========================================================================== */
+@media (orientation: portrait){
+
+  /* ---- 1) tipografia ---- */
+  #titulo h2            { font-size:clamp(15px,4.2vw,22px); }
+  #legenda .caixa       { font-size:clamp(17px,4.4vw,23px); }
+  #formula .caixa       { font-size:clamp(21px,5.6vw,44px); }
+  .badge                { font-size:clamp(14px,3.6vw,17px); }
+  .quiz-enunciado       { font-size:clamp(17px,4.6vw,22px); }
+  #quizDica             { font-size:clamp(14px,3.6vw,16px); }
+  #quiz3dAviso .caixa   { font-size:clamp(16px,4.2vw,20px); }
+  .alt                  { font-size:clamp(15px,4vw,18px); }
+
+  /* ---- 2) gráficos ---- */
+  #painelGrafico .tituloG{ font-size:clamp(12px,3vw,17px); }
+  #painelGrafico .formG  { font-size:clamp(14px,3.6vw,21px); }
+  /* Título e fórmula lado a lado não cabem num painel de ~330px úteis. */
+  #painelGrafico .cabG   { flex-wrap:wrap; justify-content:center; }
+  .eixo-txt{ font-size:21px; }   /* 14px no viewBox → ~14px reais em pé */
+  .rotulo  { font-size:23px; }   /* 15px no viewBox                      */
+
+  /* ---- 3) folga vertical ---- */
+  #painelGrafico       { transform:translate(-50%,-50%) scale(.92); }
+  #painelGrafico.show  { transform:translate(-50%,-50%) scale(1); }
+  #legenda             { bottom:11vh; }
+  #quiz3dAviso         { bottom:13vh; }
+  #titulo              { top:16%; }
+}
 </style>
 </head>
 <body>
@@ -705,7 +755,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.0.9</div>
+  <div id="versao">v1.3.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -763,7 +813,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.0.9';
+const VERSAO = 'v1.3.0';
 
 /* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
@@ -780,6 +830,13 @@ const CORES = {
   madeira:0x2a1512
 };
 
+/* Definição que a faixa 'dialogo1' digita NO QUADRO (não é legenda de tela).
+   Fica aqui, e não solta dentro da coreografia, porque o mesmo texto alimenta
+   o campo `texto` da faixa (usado como fallback quando não há mp3). */
+const DEF_CINETICA =
+  'é a parte da Química que estuda a velocidade de uma reação química, ' +
+  'os fatores que a afetam e as formas de controlá-la.';
+
 /* ==========================================================================
    2. FAIXAS — roteiro linear
    --------------------------------------------------------------------------
@@ -791,8 +848,8 @@ const CORES = {
    ========================================================================== */
 const FAIXAS = [
   /* --- Parte 1: conceitos --- */
-  { id:'intro', arquivo:'audios/intro.mp3', titulo:'O que a Cinética estuda', dur:34,
-    texto:'A ferrugem come um portão em anos. Uma explosão acaba em milissegundos. As duas são reações químicas — o que muda é a VELOCIDADE.' },
+  { id:'dialogo1', arquivo:'audios/dialogo1.mp3', titulo:'O que a Cinética estuda', dur:29,
+    texto:'Cinética Química ' + DEF_CINETICA },
 
   { id:'velocidade', arquivo:'audios/velocidade.mp3', titulo:'Velocidade de reação', dur:42,
     texto:'Velocidade média de reação é o quanto a concentração muda dividido pelo tempo gasto: v = ΔC / Δt, em mol por litro por segundo.' },
@@ -866,7 +923,7 @@ const CENAS_PERSISTENTES = [
 
 /* Que cena 3D cada faixa usa. 'bancada' | 'arena' | 'quadro' */
 const CENA_DA_FAIXA = {
-  intro:'bancada', velocidade:'quadro', colisoes:'arena', ativacao:'quadro',
+  dialogo1:'bancada', velocidade:'quadro', colisoes:'arena', ativacao:'quadro',
   fator_conc:'bancada', fator_superficie:'bancada', fator_temp:'bancada',
   fator_catalisador:'bancada',
   quiz1:'bancada',
@@ -885,7 +942,7 @@ const CENA_DA_FAIXA = {
    antes de tocar; sem 'acao', faz só tocarFaixaPorId.
    -------------------------------------------------------------------------- */
 const SUMARIO = [
-  { titulo:'1. O que é Cinética',       faixa:'intro',             acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:.35, taxaB:2.2}); } },
+  { titulo:'1. O que é Cinética',       faixa:'dialogo1',          acao:()=>{ prepararBancada({tabletes:'ambos', taxaA:.25, taxaB:.25}); } },
   { titulo:'2. Velocidade de reação',   faixa:'velocidade',        acao:()=>{ prepararQuadro('conc'); } },
   { titulo:'3. Teoria das colisões',    faixa:'colisoes',          acao:()=>{ prepararArena({n:16, temperatura:1, modo:'livre'}); } },
   { titulo:'4. Energia de ativação',    faixa:'ativacao',          acao:()=>{ prepararQuadro('energia'); } },
@@ -1005,6 +1062,14 @@ function digitar(id, texto, t0, t1){
   _digitacoes.push({ el, texto, t0, t1: Math.max(t1, t0 + .3), pronto:false });
   if(id === 'legendaTxt') mostrar('legenda');
 }
+
+/* Mesma máquina de escrever, mas o destino é a TEXTURA do quadro 3D em vez
+   de um elemento de DOM — ver texturaQuadro(). O texto revelado fica pintado
+   no quadro e não some quando a câmera muda ou a cena é remontada. */
+function digitarNoQuadro(texto, t0, t1){
+  quadroDefinir({ definicao: texto, revelado: 0 });
+  _digitacoes.push({ quadro:true, texto, t0, t1: Math.max(t1, t0 + .3), pronto:false });
+}
 function limparDigitacoes(){
   _digitacoes = [];
   const c = $('legendaCursor'); if(c) c.style.display = '';
@@ -1016,11 +1081,21 @@ function tickDigitacoes(){
     if(d.pronto) continue;
     const p = clamp((t - d.t0) / (d.t1 - d.t0), 0, 1);
     const n = Math.floor(p * d.texto.length);
+
+    /* Destino = quadro 3D. quadroRevelar() já ignora chamadas que não mudam
+       nada, então repintar o canvas grande não acontece a cada frame. */
+    if(d.quadro){
+      const piscando = p < 1 && (Math.floor(t * 2) % 2 === 0);
+      quadroRevelar(p >= 1 ? d.texto.length : n, piscando);
+      if(p >= 1) d.pronto = true;
+      continue;
+    }
+
     if(d.el.textContent.length !== n) d.el.textContent = d.texto.slice(0, n);
     if(p >= 1){ d.pronto = true; d.el.textContent = d.texto; }
   }
   /* cursor pisca só enquanto está digitando algo na legenda */
-  const digitandoLegenda = _digitacoes.some(d => !d.pronto && d.el.id === 'legendaTxt');
+  const digitandoLegenda = _digitacoes.some(d => !d.quadro && !d.pronto && d.el.id === 'legendaTxt');
   const cur = $('legendaCursor');
   if(cur) cur.style.display = digitandoLegenda ? '' : 'none';
 }
@@ -1257,6 +1332,88 @@ function flashBranco(){
   const f = $('flashBranco');
   f.classList.add('on');
   setTimeout(()=> f.classList.remove('on'), 70);
+}
+
+/* --------------------------------------------------------------------------
+   FADE DE OBJETOS 3D — desvanecer(grupo, 0|1, ms)
+   --------------------------------------------------------------------------
+   Serve para "esvaziar a bancada" na abertura sem destruir nada: no fim do
+   fade o grupo só vira visible=false. Os béqueres continuam borbulhando, o
+   Bunsen continua no lugar — é material GUARDADO, pronto para voltar com
+   trazerEquipamentos().
+
+   Dois detalhes que não são óbvios:
+
+   · MeshToonMaterial e MeshStandardMaterial nascem com transparent:false, e
+     nesse estado a opacidade é simplesmente IGNORADA — o objeto sumiria de
+     uma vez. Por isso ligamos transparent durante o fade e devolvemos o valor
+     original quando ele volta ao normal (transparent:true muda a ordenação de
+     render e não deve ficar ligado à toa).
+   · a opacidade-base de cada material é guardada em userData na primeira
+     passada. Sem isso, um segundo fade partiria da opacidade já reduzida e o
+     vidro do béquer (0.20) iria clareando a cada ida e volta.
+   -------------------------------------------------------------------------- */
+let _fades = [];
+
+function _materiaisDe(obj){
+  const vistos = new Set(), lista = [];
+  obj.traverse((o)=>{
+    if(!o.material) return;
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    ms.forEach((m)=>{
+      if(vistos.has(m)) return;
+      vistos.add(m);
+      if(m.userData._op0 === undefined){
+        m.userData._op0 = (m.opacity === undefined) ? 1 : m.opacity;
+        m.userData._tr0 = !!m.transparent;
+      }
+      lista.push(m);
+    });
+  });
+  return lista;
+}
+
+function _aplicarFade(mats, k){
+  for(let i = 0; i < mats.length; i++){
+    const m = mats[i];
+    m.transparent = (k < .999) ? true : m.userData._tr0;
+    m.opacity     = m.userData._op0 * k;
+  }
+}
+
+/* para = 1 (aparecer) ou 0 (sumir). ms <= 0 aplica na hora. */
+function desvanecer(obj, para, ms, aoFim){
+  if(!obj) return;
+  const mats = _materiaisDe(obj);
+  const de = (obj.userData._fadeK === undefined) ? (obj.visible ? 1 : 0)
+                                                 : obj.userData._fadeK;
+  _fades = _fades.filter(f => f.obj !== obj);   // no máximo um fade por objeto
+  if(para > 0) obj.visible = true;              // precisa render para aparecer
+
+  if(!ms || ms <= 0){
+    obj.userData._fadeK = para;
+    _aplicarFade(mats, para);
+    obj.visible = para > 0;
+    if(aoFim) aoFim();
+    return;
+  }
+  _fades.push({ obj, mats, de, para, t:0, dur: ms / 1000, aoFim });
+}
+
+function tickFades(dt){
+  for(let i = _fades.length - 1; i >= 0; i--){
+    const f = _fades[i];
+    f.t += dt;
+    const p = clamp(f.t / f.dur, 0, 1);
+    const k = lerp(f.de, f.para, easeInOutCubic(p));
+    f.obj.userData._fadeK = k;
+    _aplicarFade(f.mats, k);
+    if(p >= 1){
+      f.obj.visible = f.para > 0;    // guardado: sai do render, fica na cena
+      _fades.splice(i, 1);
+      if(f.aoFim) f.aoFim();
+    }
+  }
 }
 
 /* ==========================================================================
@@ -1649,6 +1806,218 @@ function texturaParedeSlide(){
   return _texParede;
 }
 
+/* --------------------------------------------------------------------------
+   QUADRO DA PAREDE DO FUNDO — texto CRAVADO na textura
+   --------------------------------------------------------------------------
+   O texto do quadro NÃO é um overlay de DOM: ele é pintado num <canvas> que
+   vira a textura do plano do quadro (10.5 x 5.6 em z = -6.05). Consequências
+   que justificam a escolha:
+
+     · o texto é geometria de cena — mudar a câmera não o apaga, ele fica lá,
+       em perspectiva, como se estivesse escrito no quadro mesmo;
+     · o canvas e a textura são ÚNICOS e vivem fora das cenas (registrados em
+       TEXTURAS_COMPARTILHADAS). prepararBancada/Quadro/Arena chamam novaRaiz()
+       e reconstroem criarSala() a cada troca de faixa — se o estado morasse
+       no mesh, o texto sumiria na primeira troca. Por isso o conteúdo mora em
+       QUADRO_TXT e criarSala() só pendura a textura já pintada.
+
+   MeshBasicMaterial (não toon): as luzes do laboratório são fracas de
+   propósito e um material que recebe luz deixaria o texto ilegível. O
+   degradê de "luz batendo no quadro" já vem pintado no próprio canvas.
+
+   ÁREA ÚTIL: o quadro tem 10.5 x 5.6 e a tela quase nunca enquadra tudo, então
+   o layout depende da ORIENTAÇÃO — ver LAYOUT_QUADRO:
+
+     paisagem  a CAM_QUADRO_DEF corta a faixa de cima do quadro (o topo do
+               plano fica fora do frustum) mas sobra largura de sobra. Texto
+               ocupando quase toda a largura, título a 18% da altura.
+     retrato   a tela é estreita: com a largura toda, as pontas do texto caem
+               fora. Texto numa COLUNA central de 60% da largura, que a
+               CAM_QUADRO_DEF_P consegue enquadrar inteira. Em compensação o
+               quadro cabe todo na vertical, então dá para usar o topo.
+
+   pintarQuadro() é chamada de novo em aoRedimensionar(): girar o aparelho
+   troca o layout na hora.
+   -------------------------------------------------------------------------- */
+const QUADRO_W = 1920, QUADRO_H = 1024;      // 1.875 = 10.5/5.6, o mesmo do plano
+
+/* Estado do que está escrito. `revelado` = nº de caracteres já "digitados". */
+const QUADRO_TXT = {
+  titulo:    'Cinética Química',
+  rotulo:    '',
+  definicao: '',
+  revelado:  0,
+  caret:     false      // barra de digitação piscando (só enquanto digita)
+};
+
+/* Um layout por orientação. u/v são frações da textura (0..1).
+     colEsq/colDir  coluna de texto      tituloV  baseline do título
+     rotuloV        baseline de "Definição:"
+     defV           baseline da 1ª linha da definição
+     linha          altura de linha, em px de textura                       */
+const LAYOUT_QUADRO = {
+  paisagem: { colEsq:.095, colDir:.905, tamTitulo:104, tamRotulo:68, tamDef:68,
+              tituloV:.255, fileteV:.305, rotuloV:.445, defV:.575, linha:92 },
+  retrato:  { colEsq:.200, colDir:.800, tamTitulo:84, tamRotulo:58, tamDef:56,
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:78 }
+};
+function ehRetrato(){ return window.innerHeight > window.innerWidth; }
+function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
+
+let _cvQuadro = null, _ctxQuadro = null, _texQuadro = null;
+
+function texturaQuadro(){
+  if(_texQuadro) return _texQuadro;
+  _cvQuadro = document.createElement('canvas');
+  _cvQuadro.width = QUADRO_W; _cvQuadro.height = QUADRO_H;
+  _ctxQuadro = _cvQuadro.getContext('2d');
+  _texQuadro = new THREE.CanvasTexture(_cvQuadro);
+  _texQuadro.anisotropy = 8;
+  TEXTURAS_COMPARTILHADAS.add(_texQuadro);   // sobrevive ao desmonte das cenas
+  pintarQuadro();
+  return _texQuadro;
+}
+
+/* Quebra o texto em linhas usando a largura REAL medida no canvas.
+   A quebra é calculada sobre o texto COMPLETO, nunca sobre o pedaço já
+   revelado: senão as linhas se reorganizariam a cada letra e o texto
+   "pularia" durante a digitação. */
+function quebrarLinhas(c, txt, larguraMax){
+  const palavras = String(txt).split(/\s+/).filter(Boolean);
+  const linhas = [];
+  let atual = '';
+  for(let i = 0; i < palavras.length; i++){
+    const teste = atual ? atual + ' ' + palavras[i] : palavras[i];
+    if(atual && c.measureText(teste).width > larguraMax){
+      linhas.push(atual); atual = palavras[i];
+    } else {
+      atual = teste;
+    }
+  }
+  if(atual) linhas.push(atual);
+  return linhas;
+}
+
+function pintarQuadro(){
+  if(!_ctxQuadro) return;
+  const c = _ctxQuadro, W = QUADRO_W, H = QUADRO_H;
+  const FONTE = '"Segoe UI", system-ui, Roboto, Arial, sans-serif';
+
+  /* ---- 1) fundo do quadro ---- */
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0,   '#241110');   // luz do teto bate em cima
+  g.addColorStop(.45, '#180c0a');
+  g.addColorStop(1,   '#120807');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+
+  /* Brilho suave no canto superior esquerdo (a key light vem da direita/alto,
+     mas o quadro é fosco: um clarão discreto tira o ar de retângulo chapado). */
+  const br = c.createRadialGradient(W*.30, H*.16, 20, W*.30, H*.16, W*.62);
+  br.addColorStop(0, 'rgba(255,220,200,.055)');
+  br.addColorStop(1, 'rgba(255,220,200,0)');
+  c.fillStyle = br; c.fillRect(0, 0, W, H);
+
+  /* Fio interno, como a borda de um quadro branco de sala de aula. */
+  c.strokeStyle = 'rgba(255,59,48,.14)'; c.lineWidth = 4;
+  c.strokeRect(W*.035, H*.055, W*.93, H*.885);
+
+  /* ---- 2) área útil: depende da orientação (ver LAYOUT_QUADRO) ---- */
+  const L = layoutQuadro();
+  const ESQ = W * L.colEsq, DIR = W * L.colDir, LARG = DIR - ESQ;
+
+  /* ---- 3) título ---- */
+  if(QUADRO_TXT.titulo){
+    c.font = '800 ' + L.tamTitulo + 'px ' + FONTE;
+    c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    const gt = c.createLinearGradient(ESQ, 0, DIR, 0);
+    gt.addColorStop(0,   '#ff3b30');
+    gt.addColorStop(.55, '#ff9d33');
+    gt.addColorStop(1,   '#ff5a3c');
+    c.fillStyle = gt;
+    c.fillText(QUADRO_TXT.titulo, (ESQ + DIR) / 2, H * L.tituloV);
+
+    /* Filete sob o título. */
+    const gl = c.createLinearGradient(ESQ, 0, DIR, 0);
+    gl.addColorStop(0,   'rgba(255,59,48,0)');
+    gl.addColorStop(.5,  'rgba(255,157,51,.55)');
+    gl.addColorStop(1,   'rgba(255,59,48,0)');
+    c.fillStyle = gl; c.fillRect(ESQ, H * L.fileteV, LARG, 3);
+  }
+
+  /* ---- 4) rótulo ("Definição:") ---- */
+  c.textAlign = 'left';
+  if(QUADRO_TXT.rotulo){
+    c.font = '800 ' + L.tamRotulo + 'px ' + FONTE;
+    c.fillStyle = '#ff9d33';
+    c.fillText(QUADRO_TXT.rotulo, ESQ, H * L.rotuloV);
+  }
+
+  /* ---- 5) definição, revelada caractere a caractere ---- */
+  if(QUADRO_TXT.definicao){
+    c.font = '600 ' + L.tamDef + 'px ' + FONTE;
+    c.fillStyle = '#f6ece9';
+    const linhas = quebrarLinhas(c, QUADRO_TXT.definicao, LARG);
+    let restam = QUADRO_TXT.revelado;
+    let y = H * L.defV;
+
+    for(let i = 0; i < linhas.length; i++){
+      const linha = linhas[i];
+      if(restam <= 0) break;
+      const visivel = linha.slice(0, restam);
+      c.fillText(visivel, ESQ, y);
+
+      /* Barra de digitação no fim do que já apareceu. Só na linha CORRENTE:
+         visivel.length === restam significa que a revelação parou aqui. */
+      if(QUADRO_TXT.caret && visivel.length === restam){
+        const x = ESQ + c.measureText(visivel).width + 8;
+        c.fillStyle = '#ff3b30';
+        c.fillRect(x, y - L.tamDef * .74, 6, L.tamDef * .9);
+        c.fillStyle = '#f6ece9';
+      }
+      /* +1 pelo espaço que a quebra de linha consumiu do texto original. */
+      restam -= linha.length + 1;
+      y += L.linha;
+    }
+  }
+
+  _texQuadro.needsUpdate = true;
+}
+
+/* ---- API do quadro (usada pela coreografia das faixas) ---- */
+
+/* Troca o conteúdo. Campos omitidos ficam como estão; passe '' para apagar. */
+function quadroDefinir(op){
+  op = op || {};
+  if(op.titulo    !== undefined) QUADRO_TXT.titulo    = op.titulo;
+  if(op.rotulo    !== undefined) QUADRO_TXT.rotulo    = op.rotulo;
+  if(op.definicao !== undefined){
+    QUADRO_TXT.definicao = op.definicao;
+    QUADRO_TXT.revelado  = op.revelado || 0;
+    QUADRO_TXT.caret     = false;      // texto novo: sem barra de digitação
+  }
+  if(op.revelado !== undefined) QUADRO_TXT.revelado = op.revelado;
+  pintarQuadro();
+}
+
+/* Quantos caracteres da definição estão visíveis. Só repinta se mudou algo —
+   pintarQuadro() roda a cada frame da digitação e o canvas é grande. */
+function quadroRevelar(n, caret){
+  const novoN = clamp(Math.floor(n), 0, QUADRO_TXT.definicao.length);
+  const novoC = !!caret;
+  if(novoN === QUADRO_TXT.revelado && novoC === QUADRO_TXT.caret) return;
+  QUADRO_TXT.revelado = novoN;
+  QUADRO_TXT.caret    = novoC;
+  pintarQuadro();
+}
+
+/* Volta o quadro ao estado "só o título" — usado quando o painel de gráfico
+   vai cobrir o quadro e o texto embaixo viraria sujeira visual. */
+function quadroLimpar(){
+  QUADRO_TXT.rotulo = ''; QUADRO_TXT.definicao = '';
+  QUADRO_TXT.revelado = 0; QUADRO_TXT.caret = false;
+  pintarQuadro();
+}
+
 /* ---- Materiais prontos ---- */
 /* Madeira realista para o tampo e os pés da bancada. */
 function madeira(op){
@@ -1717,6 +2086,9 @@ function aoRedimensionar(){
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   cvConfete.width = w * dpr; cvConfete.height = h * dpr;
   cvConfete.style.width = w + 'px'; cvConfete.style.height = h + 'px';
+  /* Girar o aparelho troca o layout do texto do quadro (coluna larga em
+     paisagem, estreita em retrato) — ver LAYOUT_QUADRO. */
+  pintarQuadro();
 }
 
 /* -------------------- montagem / desmontagem de cenas -------------------- */
@@ -1742,6 +2114,9 @@ function limparGrupo(g){
   if(g.parent) g.parent.remove(g);
 }
 function desmontarCena(){
+  /* Antes de descartar: limparGrupo() dá dispose() nos materiais, e um fade
+     em curso continuaria escrevendo opacidade em material morto. */
+  _fades.length = 0;
   limparGrupo(raizCena);
   raizCena = null; cenaMontada = null; bancada = null; arena = null;
   atualizadores.length = 0;
@@ -1780,7 +2155,14 @@ function criarSala(){
   const parede = new THREE.Mesh(new THREE.PlaneGeometry(30, 16), toon(0x1e0f0d));
   parede.position.set(0, 4, -6.2); g.add(parede);
 
-  const quadro = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 5.6), toon(0x160a09));
+  /* O quadro carrega a textura de canvas onde o texto fica CRAVADO — ver
+     texturaQuadro(). Como a textura é compartilhada e vive fora das cenas,
+     o que estiver escrito sobrevive a toda remontagem de cena. */
+  /* fog:false — a névoa da cena começa em 14 e o quadro fica a 11 (paisagem)
+     ou 21 (retrato) da câmera da definição. Com névoa, o texto perderia mais
+     de um terço do contraste justo no enquadramento em pé. */
+  const quadro = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 5.6),
+    new THREE.MeshBasicMaterial({ map: texturaQuadro(), fog: false }));
   quadro.position.set(0, 3.4, -6.05); g.add(quadro);
   const moldura = new THREE.Mesh(new THREE.PlaneGeometry(11, 6.1), toon(0x4a2a26));
   moldura.position.set(0, 3.4, -6.1); g.add(moldura);
@@ -1976,32 +2358,58 @@ function prepararBancada(op){
     bancada.A.setTaxa(op.taxaA); bancada.B.setTaxa(op.taxaB);
     bancada.A.setPo(op.poA);     bancada.B.setPo(op.poB);
     bancada.bunsen.ligar(op.bunsen);
+    /* Se a abertura tinha esvaziado a bancada, quem pedir a bancada de novo
+       recebe o material de volta. É isto que faz "guardado" significar
+       guardado, e não perdido. */
+    trazerEquipamentos(700);
     return bancada;
   }
   const raiz = novaRaiz();
   raiz.add(criarSala());
 
+  /* Tudo que NÃO é a mesa entra num grupo só. A abertura esvazia a bancada
+     desvanecendo este grupo inteiro — a mesa, as paredes e o quadro ficam. */
+  const equipamentos = new THREE.Group();
+  raiz.add(equipamentos);
+
   const A = criarBequer({ x:-2.6, z:.2, corLiq:CORES.frio, taxa:op.taxaA, po:op.poA });
   const B = criarBequer({ x: 2.6, z:.2, corLiq:0xffc46b, taxa:op.taxaB, po:op.poB, r:.75 });
-  raiz.add(A.grupo); raiz.add(B.grupo);
+  equipamentos.add(A.grupo); equipamentos.add(B.grupo);
 
   const bunsen = criarBunsen(0, .1);
-  raiz.add(bunsen.grupo);
+  equipamentos.add(bunsen.grupo);
   bunsen.ligar(op.bunsen);
 
-  raiz.add(criarTripe(-4.8, -.6));
-  raiz.add(criarTripe( 4.8, -.6));
+  equipamentos.add(criarTripe(-4.8, -.6));
+  equipamentos.add(criarTripe( 4.8, -.6));
 
   /* rótulos flutuantes 3D (sprites) sobre cada béquer */
   const rotA = criarRotulo3D('A', -2.6, 2.25, .2, '#6fb7ff');
   const rotB = criarRotulo3D('B',  2.6, 2.25, .2, '#ff9d33');
-  raiz.add(rotA); raiz.add(rotB);
+  equipamentos.add(rotA); equipamentos.add(rotB);
 
   atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); bunsen.atualizar(dt); });
 
   cenaMontada = 'bancada';
-  bancada = { A, B, bunsen, rotA, rotB, raiz };
+  bancada = { A, B, bunsen, rotA, rotB, equipamentos, raiz };
   return bancada;
+}
+
+/* --------------------------------------------------------------------------
+   ESVAZIAR / REPOR A BANCADA
+   guardarEquipamentos() some com béqueres, Bunsen, tripés e rótulos num fade
+   e deixa só a mesa (e as paredes e o quadro). Nada é destruído: os objetos
+   continuam na cena com visible=false, as bolhas continuam sendo simuladas e
+   o estado do Bunsen é preservado — trazerEquipamentos() devolve tudo como
+   estava. prepararBancada() já chama a reposição sozinha.
+   -------------------------------------------------------------------------- */
+function guardarEquipamentos(ms){
+  if(bancada && bancada.equipamentos)
+    desvanecer(bancada.equipamentos, 0, ms === undefined ? 1200 : ms);
+}
+function trazerEquipamentos(ms){
+  if(bancada && bancada.equipamentos)
+    desvanecer(bancada.equipamentos, 1, ms === undefined ? 800 : ms);
 }
 
 /* Sprite de texto (rótulo A / B / dicas na cena). */
@@ -2026,15 +2434,24 @@ function criarRotulo3D(txt, x, y, z, cor){
    Serve para as faixas que são basicamente gráfico (velocidade, ativação...).
    -------------------------------------------------------------------------- */
 function prepararQuadro(qual){
+  /* O painel SVG é um overlay de DOM que cobre o quadro. Se a definição da
+     abertura continuasse pintada ali embaixo, sobrariam pedaços de texto em
+     volta do gráfico. Fica só o título. */
+  quadroLimpar();
   if(cenaMontada !== 'quadro'){
     const raiz = novaRaiz();
     raiz.add(criarSala());
+    /* Mesmo agrupamento da cena 'bancada', para guardar/trazerEquipamentos()
+       funcionarem igual aqui em vez de virarem no-op silencioso. */
+    const equipamentos = new THREE.Group();
+    raiz.add(equipamentos);
     const A = criarBequer({ x:-3.4, z:.4, corLiq:CORES.frio, taxa:.35 });
     const B = criarBequer({ x: 3.4, z:.4, corLiq:0xffc46b, taxa:.55 });
-    raiz.add(A.grupo); raiz.add(B.grupo);
+    equipamentos.add(A.grupo); equipamentos.add(B.grupo);
     atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); });
     cenaMontada = 'quadro';
-    bancada = { A, B, bunsen:{ ligar(){}, atualizar(){}, estaLigado(){return false;} }, raiz };
+    bancada = { A, B, bunsen:{ ligar(){}, atualizar(){}, estaLigado(){return false;} },
+                equipamentos, raiz };
   }
   if(qual) abrirGrafico(qual);
   return bancada;
@@ -2295,6 +2712,19 @@ const CAM_DUPLA   = { theta: 0.00, phi: 1.30, dist:  8.2, target:[0, 1.2, .2] };
 const CAM_ARENA   = { theta: 0.00, phi: 1.30, dist: 10.5, target:[0, 2.45, 0] };
 const CAM_ARENA_P = { theta: 0.34, phi: 1.34, dist:  7.6, target:[0, 2.45, 0] };
 const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  8.6, target:[0, 3.0, -2.6] };
+/* Enquadramento da DEFINIÇÃO: bancada em primeiro plano e o quadro ocupando a
+   metade de cima da tela — o "plano de sala de aula". Cuidado ao mexer: essa
+   câmera corta a faixa superior do quadro, e o layout de pintarQuadro() já
+   está calibrado para ela (título a ~18% da altura da textura). */
+const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, -0.3] };
+/* Mesma cena em RETRATO. Não dá para reaproveitar a de cima: a tela em pé é
+   estreita e o quadro tem 10.5 de largura — fatorRetrato() só afasta a câmera
+   pelo MESMO eixo, então o texto continuaria saindo pelas laterais (e ainda
+   fora de centro, porque o eixo é oblíquo). Esta variante mira o centro do
+   quadro e afasta o suficiente para a coluna estreita do texto caber.
+   Anda de par com o layout retrato de pintarQuadro(). */
+const CAM_QUADRO_DEF_P = { theta: 0.00, phi: 1.32, dist:  6.5, target:[0, 3.0, -2.4] };
+function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
@@ -3435,20 +3865,35 @@ function quizAoTerminarFaixa(id){
 const EVENTOS = {
 
   /* ------------------------------------------------------------------ */
-  /* 1. INTRO — o que a Cinética estuda                                  */
+  /* 1. DIALOGO1 — a definição escrita no quadro                         */
   /* ------------------------------------------------------------------ */
-  intro: () => rodarStory([
+  /* O título 'Cinética Química' JÁ ESTÁ no quadro desde o boot (é o valor
+     inicial de QUADRO_TXT.titulo). Esta faixa só leva a câmera até lá,
+     escreve o rótulo e digita a definição entre 4 s e 10 s do áudio.
+     Nada disso é overlay de tela: tudo é pintado na textura do quadro e
+     continua lá quando a câmera se mexer. */
+  dialogo1: () => rodarStory([
     { t:0.0,  fn:()=>{ prepararBancada({ taxaA:.25, taxaB:.25 });
-                       irParaCamera(CAM_GERAL, false); orbitaSuave = .035; } },
-    { t:0.4,  fn:()=> tituloSecao('Cinética Química', 'por que umas reações são rápidas e outras lentas?') },
-    { t:6.0,  fn:()=> esconder('titulo') },
-    { t:7.0,  fn:()=> legenda(FAIXAS[0].texto, 7, 20) },
-    { t:11.0, fn:()=> irParaCamera(CAM_DUPLA, true, 1600) },
-    { t:14.0, fn:()=>{ bancada.A.setTaxa(.18); bancada.B.setTaxa(2.4); playSfx('fizz', .35); } },
-    { t:17.0, fn:()=> mostrarBadges([{ txt:'A — lenta', cor:'frio' }, { txt:'B — rápida', cor:'quente' }]) },
-    { t:22.0, fn:()=>{ esconder('badges'); irParaCamera(CAM_BEQUER_B, true, 1400); } },
-    { t:26.0, fn:()=> legenda('A Cinética estuda a VELOCIDADE das reações — e como controlá-la.', 26, 32) },
-    { t:31.0, fn:()=>{ irParaCamera(CAM_GERAL, true, 1600); orbitaSuave = 0; } }
+                       /* trazer(0) antes de guardar: se o aluno estiver
+                          repetindo o app, a bancada pode já estar vazia — o
+                          par garante que o fade SEMPRE saia de cheia. */
+                       trazerEquipamentos(0);
+                       guardarEquipamentos(1400);
+                       quadroDefinir({ titulo:'Cinética Química', rotulo:'', definicao:'' });
+                       irParaCamera(camDefinicao(), true, 1600); orbitaSuave = 0; } },
+
+    /* Câmera já chegou: aparece o rótulo, embaixo do título. */
+    { t:2.0,  fn:()=>{ quadroDefinir({ rotulo:'Definição:' }); playSfx('pop', .35); } },
+
+    /* 4 s → 10 s: a definição é digitada no quadro, letra a letra. */
+    { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 10) },
+
+    /* Depois da digitação, a câmera abre para o plano geral: é aqui que dá
+       para ver que o texto continua CRAVADO no quadro, ao fundo.
+       SEM religar orbitaSuave: a órbita lenta é só da CAPA. A partir do
+       "Começar" a câmera fica parada, senão o quadro sairia de quadro
+       sozinho no meio da leitura. */
+    { t:12.0, fn:()=> irParaCamera(CAM_GERAL, true, 2000) }
   ]),
 
   /* ------------------------------------------------------------------ */
@@ -3740,7 +4185,7 @@ function aoTerminarFaixa(){
 
   switch(id){
     /* --- Conceitos: mostra o play para o aluno seguir no ritmo dele --- */
-    case 'intro':
+    case 'dialogo1':
     case 'velocidade':
     case 'colisoes':
     case 'ativacao':
@@ -3866,6 +4311,7 @@ function animar(){
   tickRelogioVirtual(dt);   // relógio sintético (modo demonstração)
   tickStory();              // cues por tempo de áudio
   tickDigitacoes();         // máquina de escrever
+  tickFades(dt);            // fade de objetos 3D (esvaziar/repor a bancada)
   tickCamera();             // easing da câmera
   tickOrbita(dt);           // órbita lenta
   tickMB();                 // animação da curva de Maxwell-Boltzmann
@@ -3946,7 +4392,12 @@ function iniciarApp(){
   mbPosicionarEa();
   graficoConcGrade();
 
-  /* Cena de abertura já montada por trás da tela de carregamento. */
+  /* Cena de abertura já montada por trás da tela de carregamento.
+     A órbita lenta é a CAPA do app: a câmera passeia enquanto ninguém tocou
+     em nada. O primeiro cue de 'dialogo1' zera orbitaSuave, então clicar em
+     COMEÇAR já para o giro e ele não volta durante a abertura.
+     (As faixas 'colisoes' e 'encerramento' têm órbita PRÓPRIA, de propósito:
+     a arena é uma caixa 3D, que só lê como volume se a câmera se mexer.) */
   prepararBancada({ taxaA:.3, taxaB:.45 });
   irParaCamera(CAM_GERAL, false);
   orbitaSuave = .03;
@@ -3955,7 +4406,9 @@ function iniciarApp(){
 
   setTimeout(()=>{
     $('carregando').classList.add('sumiu');
-    tituloSecao('Cinética Química', 'toque em COMEÇAR');
+    /* Sem título de DOM na abertura: 'Cinética Química' já está escrito no
+       QUADRO da parede do fundo desde o primeiro frame (QUADRO_TXT.titulo).
+       O overlay grande cairia exatamente por cima dele. */
     mostrarPlay('Começar');
   }, 650);
 

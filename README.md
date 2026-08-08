@@ -8,6 +8,11 @@ quizzes, tudo sincronizado por tempo de áudio.
 
 Instalável como PWA (no celular: menu do navegador → *Instalar app* / *Adicionar à tela de início*).
 
+Roda **em pé e deitado** (`"orientation": "any"` no manifesto) — segue a orientação do
+aparelho. Em retrato, um bloco `@media (orientation: portrait)` no fim do CSS sobe os
+mínimos das fontes e as fontes internas dos SVG; na cena 3D, `fatorRetrato()` afasta a
+câmera para a bancada não sair cortada nas laterais.
+
 ---
 
 ## Conteúdo
@@ -60,6 +65,51 @@ ativacao: () => rodarStory([
 
 Os quizzes são data-driven em `QUIZZES.quiz1.itens`, com quatro tipos de interação:
 `alternativas`, `figuras`, `arrastar` e `3d`.
+
+## Esvaziar a bancada
+
+Na abertura, ao tocar em COMEÇAR, béqueres, Bunsen, tripés e rótulos somem num fade e
+sobra só a mesa. **Nada é destruído**: os objetos ficam na cena com `visible=false`, as
+bolhas continuam sendo simuladas e o estado do Bunsen é preservado.
+
+```js
+guardarEquipamentos(1400);   // fade out, deixa só a mesa
+trazerEquipamentos(700);     // devolve tudo
+```
+
+Todo o material que não é a mesa vive num grupo `bancada.equipamentos`, e o fade genérico
+é `desvanecer(objeto, 0|1, ms)`. Duas pegadinhas resolvidas lá: materiais toon/standard
+nascem com `transparent:false` e nesse estado **ignoram a opacidade** (sumiriam de uma vez);
+e a opacidade-base de cada material é guardada em `userData`, senão o vidro do béquer
+(0.20) iria clareando a cada ida e volta.
+
+`prepararBancada()` chama `trazerEquipamentos()` sozinha — qualquer faixa que peça a
+bancada recebe o material de volta.
+
+## Quadro da parede do fundo
+
+O texto do quadro **não é overlay de tela** — é pintado num `<canvas>` que vira a textura
+do plano do quadro. Por isso ele fica *cravado* ali: muda a câmera, o texto continua no
+lugar, em perspectiva; troca a cena, ele continua (o canvas e a textura são únicos e ficam
+registrados em `TEXTURAS_COMPARTILHADAS`, fora do ciclo de vida das cenas).
+
+O estado mora em `QUADRO_TXT` (`titulo`, `rotulo`, `definicao`, `revelado`). A API:
+
+```js
+quadroDefinir({ titulo:'Cinética Química', rotulo:'Definição:' });
+digitarNoQuadro(DEF_CINETICA, 4, 10);   // digita entre 4 s e 10 s do áudio
+quadroLimpar();                          // volta ao "só o título"
+```
+
+`digitarNoQuadro` usa a mesma máquina de escrever das legendas (`tickDigitacoes`), só que
+o destino é a textura. `prepararQuadro()` chama `quadroLimpar()` porque nas faixas de
+gráfico o painel SVG cobre o quadro e sobraria texto solto em volta.
+
+O layout tem **duas variantes** (`LAYOUT_QUADRO`), trocadas ao girar o aparelho:
+em paisagem o texto ocupa quase toda a largura; em retrato ele vai para uma coluna central
+de 60%, porque a tela em pé não enquadra os 10.5 de largura do quadro. Cada variante anda
+de par com uma câmera — `CAM_QUADRO_DEF` e `CAM_QUADRO_DEF_P`, escolhidas por
+`camDefinicao()`.
 
 ## Cenário
 
