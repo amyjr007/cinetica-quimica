@@ -819,7 +819,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.9.1</div>
+  <div id="versao">v1.10.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -892,7 +892,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.9.1';
+const VERSAO = 'v1.10.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -929,11 +929,23 @@ const CORES = {
    COR: os trechos que começam com "N." são itens de lista e saem na cor do
    rótulo (âmbar), não no branco do corpo — ver quebrarLinhas(). A regra é o
    próprio texto, sem marcador especial para o autor lembrar de digitar. */
-const DEF_CINETICA =
-  'É a parte da Química que estuda:\n' +
-  '1. A velocidade de uma reação.\n' +
-  '2. Os fatores que afetam essa velocidade.\n' +
-  '3. Como controlar essa velocidade.';
+const DEF_LINHAS = [
+  'É a parte da Química que estuda:',
+  '1. A velocidade de uma reação.',
+  '2. Os fatores que afetam essa velocidade.',
+  '3. Como controlar essa velocidade.'
+];
+const DEF_CINETICA = DEF_LINHAS.join('\n');
+
+/* Índice do caractere onde COMEÇA o trecho i, dentro de DEF_CINETICA. É o que
+   permite digitar a lista em etapas ("o item 2 começa em 8.5s") sem contar
+   caracteres na mão — e sem quebrar quando o texto for editado. O +1 é o \n,
+   que ocupa um caractere igual ao espaço. */
+function defIndice(i){
+  let n = 0;
+  for(let k = 0; k < i && k < DEF_LINHAS.length; k++) n += DEF_LINHAS[k].length + 1;
+  return n;
+}
 
 /* ==========================================================================
    2. FAIXAS — roteiro linear
@@ -947,7 +959,7 @@ const DEF_CINETICA =
 const FAIXAS = [
   /* --- Parte 1: conceitos --- */
   /* Sem os \n: aqui o texto é legenda de DOM, e a quebra do quadro não vale. */
-  { id:'dialogo1', arquivo:'audios/dialogo1.mp3', titulo:'O que a Cinética estuda', dur:29,
+  { id:'dialogo1', arquivo:'audios/dialogo1.mp3', titulo:'O que a Cinética estuda', dur:39,
     texto:'Cinética Química ' + DEF_CINETICA.replace(/\n/g, ' ') },
 
   /* Ramos da pergunta das torneiras, no fim da dialogo1. `ramo:true` os tira
@@ -1174,13 +1186,21 @@ function digitar(id, texto, t0, t1){
 /* Mesma máquina de escrever, mas o destino é a TEXTURA do quadro 3D em vez
    de um elemento de DOM — ver texturaQuadro(). O texto revelado fica pintado
    no quadro e não some quando a câmera muda ou a cena é remontada. */
-function digitarNoQuadro(texto, t0, t1, campo){
-  const alvo = (campo === 'rotulo') ? 'rotulo' : 'definicao';
-  if(alvo === 'rotulo') quadroDefinir({ rotulo: texto, revelarRotulo: 0 });
-  else                  quadroDefinir({ definicao: texto, revelado: 0 });
+/* `de`/`ate` digitam só um PEDAÇO do texto — é assim que a lista aparece em
+   etapas ("o item 2 começa em 8.5s"). Com `de` maior que zero o texto já está
+   no quadro e não pode ser reposto, senão o que já apareceu piscaria. */
+function digitarNoQuadro(texto, t0, t1, campo, de, ate){
+  const alvo = CAMPOS_QUADRO[campo] ? campo : 'definicao';
+  const i0 = de || 0;
+  if(!i0){
+    if(alvo === 'rotulo')        quadroDefinir({ rotulo: texto, revelarRotulo: 0 });
+    else if(alvo === 'pergunta') quadroDefinir({ pergunta: texto });
+    else                         quadroDefinir({ definicao: texto, revelado: 0 });
+  }
   /* `quadro` guarda QUAL campo está sendo digitado — tickDigitacoes repassa
      para quadroRevelar(). */
-  _digitacoes.push({ quadro:alvo, texto, t0, t1: Math.max(t1, t0 + .3), pronto:false });
+  _digitacoes.push({ quadro:alvo, texto, t0, t1: Math.max(t1, t0 + .3),
+                     de:i0, ate:(ate === undefined ? texto.length : ate), pronto:false });
 }
 function limparDigitacoes(){
   _digitacoes = [];
@@ -1198,7 +1218,8 @@ function tickDigitacoes(){
        nada, então repintar o canvas grande não acontece a cada frame. */
     if(d.quadro){
       const piscando = p < 1 && (Math.floor(t * 2) % 2 === 0);
-      quadroRevelar(p >= 1 ? d.texto.length : n, piscando, d.quadro);
+      const nq = Math.floor(d.de + p * (d.ate - d.de));
+      quadroRevelar(p >= 1 ? d.ate : nq, piscando, d.quadro);
       if(p >= 1) d.pronto = true;
       continue;
     }
@@ -2013,7 +2034,26 @@ const QUADRO_TXT = {
      desliza. `saindoDesloca` é em px de textura. */
   saindoRotulo:   '',
   saindoDef:      '',
-  saindoDesloca:  0
+  saindoDesloca:  0,
+
+  /* Pergunta solta embaixo da lista ("O que é velocidade?"). Tem alfa próprio
+     porque some em fade, sem levar o resto do quadro junto. */
+  pergunta:         '',
+  perguntaRevelado: 0,
+  perguntaCaret:    false,
+  perguntaAlfa:     1,
+
+  /* Realce de UM item da lista: ele cresce e ganha sombra, como se saísse do
+     plano do quadro. -1 = nenhum. */
+  destaqueItem:   -1,
+  destaqueEscala: 1
+};
+
+/* Nome dos campos de contagem por alvo de digitação. */
+const CAMPOS_QUADRO = {
+  definicao: { n:'revelado',         c:'caret' },
+  rotulo:    { n:'reveladoRotulo',   c:'caretRotulo' },
+  pergunta:  { n:'perguntaRevelado', c:'perguntaCaret' }
 };
 
 /* Um layout por orientação. u/v são frações da textura (0..1).
@@ -2025,7 +2065,8 @@ const QUADRO_TXT = {
 const LAYOUT_QUADRO = {
   paisagem: { colEsq:.095, colDir:.905, tituloU:.500,
               tamTitulo:104, tamRotulo:68, tamDef:68,
-              tituloV:.255, fileteV:.305, rotuloV:.445, defV:.575, linha:92 },
+              tituloV:.255, fileteV:.305, rotuloV:.445, defV:.575, linha:92,
+              perguntaV:.900 },
 
   /* RETRATO — calibrado para a CAM_QUADRO_DEF_P. ESTES SÃO OS KNOBS:
        colEsq/colDir  movem e estreitam a coluna de texto
@@ -2061,7 +2102,8 @@ const LAYOUT_QUADRO = {
      senão o bloco ficaria frouxo com a letra menor. */
   retrato:  { colEsq:.2514, colDir:.8424, tituloU:.4395,
               tamTitulo:66, tamRotulo:48, tamDef:37,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:51 }
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:51,
+              perguntaV:.720 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
@@ -2099,20 +2141,21 @@ function texturaQuadro(){
    `linha.txt.length + 1` por linha ao contar o que já foi revelado. */
 function quebrarLinhas(c, txt, larguraMax){
   const linhas = [];
-  String(txt).split('\n').forEach((trecho)=>{
+  String(txt).split('\n').forEach((trecho, iTrecho)=>{
     const destaque = /^\s*\d+\./.test(trecho);
     const palavras = trecho.split(/\s+/).filter(Boolean);
-    if(!palavras.length){ linhas.push({ txt:'', destaque }); return; }
+    const por = (t) => linhas.push({ txt:t, destaque, trecho:iTrecho });
+    if(!palavras.length){ por(''); return; }
     let atual = '';
     for(let i = 0; i < palavras.length; i++){
       const teste = atual ? atual + ' ' + palavras[i] : palavras[i];
       if(atual && c.measureText(teste).width > larguraMax){
-        linhas.push({ txt:atual, destaque }); atual = palavras[i];
+        por(atual); atual = palavras[i];
       } else {
         atual = teste;
       }
     }
-    if(atual) linhas.push({ txt:atual, destaque });
+    if(atual) por(atual);
   });
   return linhas;
 }
@@ -2211,9 +2254,26 @@ function pintarQuadro(){
       const linha = linhas[i];
       if(restam <= 0) break;
       const visivel = linha.txt.slice(0, restam);
-      /* Itens de lista saem em âmbar, a mesma cor de "Definição:". */
-      c.fillStyle = linha.destaque ? '#ff9d33' : '#f6ece9';
-      c.fillText(visivel, ESQ, y);
+      const realce = (linha.trecho === QUADRO_TXT.destaqueItem) &&
+                     QUADRO_TXT.destaqueEscala > 1.005;
+
+      if(realce){
+        /* Cresce a partir da própria baseline, com sombra: é o que vende a
+           ideia de que a linha saiu do plano do quadro e está na frente das
+           outras. Escala em vez de trocar a fonte para o crescimento poder
+           ser animado de forma contínua. */
+        c.save();
+        c.translate(ESQ, y);
+        c.scale(QUADRO_TXT.destaqueEscala, QUADRO_TXT.destaqueEscala);
+        c.shadowColor = 'rgba(0,0,0,.75)'; c.shadowBlur = 16; c.shadowOffsetY = 5;
+        c.fillStyle = '#ffc46b';
+        c.fillText(visivel, 0, 0);
+        c.restore();
+      } else {
+        /* Itens de lista saem em âmbar, a mesma cor de "Definição:". */
+        c.fillStyle = linha.destaque ? '#ff9d33' : '#f6ece9';
+        c.fillText(visivel, ESQ, y);
+      }
 
       /* Barra de digitação no fim do que já apareceu. Só na linha CORRENTE:
          visivel.length === restam significa que a revelação parou aqui. */
@@ -2228,6 +2288,22 @@ function pintarQuadro(){
     }
   }
 
+  /* ---- 6) pergunta solta embaixo da lista ---- */
+  if(QUADRO_TXT.pergunta && QUADRO_TXT.perguntaAlfa > .01){
+    c.save();
+    c.globalAlpha = clamp(QUADRO_TXT.perguntaAlfa, 0, 1);
+    c.font = '800 ' + L.tamRotulo + 'px ' + FONTE;   // do tamanho de "Definição:"
+    c.fillStyle = '#ff9d33';
+    const visP = QUADRO_TXT.pergunta.slice(0, QUADRO_TXT.perguntaRevelado);
+    const yP = H * L.perguntaV;
+    c.fillText(visP, ESQ, yP);
+    if(QUADRO_TXT.perguntaCaret){
+      c.fillStyle = '#ff3b30';
+      c.fillRect(ESQ + c.measureText(visP).width + 6, yP - L.tamRotulo * .74, 5, L.tamRotulo * .9);
+    }
+    c.restore();
+  }
+
   _texQuadro.needsUpdate = true;
 }
 
@@ -2237,6 +2313,12 @@ function pintarQuadro(){
 function quadroDefinir(op){
   op = op || {};
   if(op.titulo !== undefined) QUADRO_TXT.titulo = op.titulo;
+  if(op.pergunta !== undefined){
+    QUADRO_TXT.pergunta = op.pergunta;
+    QUADRO_TXT.perguntaRevelado = 0;
+    QUADRO_TXT.perguntaCaret = false;
+    QUADRO_TXT.perguntaAlfa = 1;
+  }
   if(op.rotulo !== undefined){
     QUADRO_TXT.rotulo = op.rotulo;
     /* Sem `revelarRotulo`, o rótulo entra INTEIRO. Quem digita letra a letra
@@ -2258,15 +2340,60 @@ function quadroDefinir(op){
    'rotulo'. Só repinta se mudou algo — isto roda a cada frame da digitação e
    o canvas é grande. */
 function quadroRevelar(n, caret, campo){
-  const alvo   = (campo === 'rotulo') ? 'rotulo' : 'definicao';
-  const chaveN = (alvo === 'rotulo') ? 'reveladoRotulo' : 'revelado';
-  const chaveC = (alvo === 'rotulo') ? 'caretRotulo'    : 'caret';
+  const alvo = CAMPOS_QUADRO[campo] ? campo : 'definicao';
+  const { n:chaveN, c:chaveC } = CAMPOS_QUADRO[alvo];
   const novoN = clamp(Math.floor(n), 0, QUADRO_TXT[alvo].length);
   const novoC = !!caret;
   if(novoN === QUADRO_TXT[chaveN] && novoC === QUADRO_TXT[chaveC]) return;
   QUADRO_TXT[chaveN] = novoN;
   QUADRO_TXT[chaveC] = novoC;
   pintarQuadro();
+}
+
+/* --------------------------------------------------------------------------
+   ANIMAÇÕES NUMÉRICAS DO QUADRO (escala do realce, alfa da pergunta).
+   Em tempo REAL: são disparadas por cues, mas precisam correr sozinhas depois
+   disso — presas ao relógio do áudio elas parariam junto com ele.
+   -------------------------------------------------------------------------- */
+let _quadroAnims = [];
+function animarQuadro(chave, para, ms, aoFim){
+  _quadroAnims = _quadroAnims.filter(a => a.chave !== chave);
+  _quadroAnims.push({ chave, de:QUADRO_TXT[chave], para,
+                      t:0, dur:Math.max(.001, (ms || 500) / 1000), aoFim });
+}
+function tickQuadroAnims(dt){
+  if(!_quadroAnims.length) return;
+  let mudou = false;
+  for(let i = _quadroAnims.length - 1; i >= 0; i--){
+    const a = _quadroAnims[i];
+    a.t += dt;
+    const p = clamp(a.t / a.dur, 0, 1);
+    const v = lerp(a.de, a.para, easeInOutCubic(p));
+    if(Math.abs(v - QUADRO_TXT[a.chave]) > .002){ QUADRO_TXT[a.chave] = v; mudou = true; }
+    if(p >= 1){
+      QUADRO_TXT[a.chave] = a.para; mudou = true;
+      _quadroAnims.splice(i, 1);
+      if(a.aoFim) a.aoFim();
+    }
+  }
+  if(mudou) pintarQuadro();
+}
+
+/* Faz o item `i` da lista crescer (sai do plano) ou voltar ao normal. */
+function quadroDestacarItem(i, escala, ms){
+  QUADRO_TXT.destaqueItem = i;
+  animarQuadro('destaqueEscala', escala, ms || 700,
+    ()=>{ if(escala <= 1.001) QUADRO_TXT.destaqueItem = -1; });
+  pintarQuadro();
+}
+
+/* Some com a pergunta em fade, sem levar o resto do quadro junto. */
+function quadroPerguntaSumir(ms){
+  animarQuadro('perguntaAlfa', 0, ms || 900, ()=>{
+    QUADRO_TXT.pergunta = ''; QUADRO_TXT.perguntaRevelado = 0;
+    QUADRO_TXT.perguntaCaret = false; QUADRO_TXT.perguntaAlfa = 1;
+    pintarQuadro();
+  });
 }
 
 /* --------------------------------------------------------------------------
@@ -2330,11 +2457,14 @@ function tickQuadroSaida(dt){
 /* Volta o quadro ao estado "só o título" — usado quando o painel de gráfico
    vai cobrir o quadro e o texto embaixo viraria sujeira visual. */
 function quadroLimpar(){
-  _quadroSaida = null;
+  _quadroSaida = null; _quadroAnims.length = 0;
   QUADRO_TXT.rotulo = ''; QUADRO_TXT.definicao = '';
   QUADRO_TXT.revelado = 0; QUADRO_TXT.caret = false;
   QUADRO_TXT.reveladoRotulo = 0; QUADRO_TXT.caretRotulo = false;
   QUADRO_TXT.saindoRotulo = ''; QUADRO_TXT.saindoDef = ''; QUADRO_TXT.saindoDesloca = 0;
+  QUADRO_TXT.pergunta = ''; QUADRO_TXT.perguntaRevelado = 0;
+  QUADRO_TXT.perguntaCaret = false; QUADRO_TXT.perguntaAlfa = 1;
+  QUADRO_TXT.destaqueItem = -1; QUADRO_TXT.destaqueEscala = 1;
   pintarQuadro();
 }
 
@@ -3926,6 +4056,10 @@ const QUIZZES = {
         enunciado:'Qual torneira goteja mais rápido?',
         alternativas:[ { txt:'Torneira A' }, { txt:'Torneira B' } ],
         correta:1, compacto:true,
+        /* O card entra em t=36.7 da dialogo1, com ela ainda tocando: por isso
+           `faixaEmCurso`. As alternativas só aparecem no fim do áudio — é o
+           `faixa` que faz quizAoTerminarFaixa() reconhecer esse fim. */
+        faixa:'dialogo1', faixaEmCurso:true,
         /* Ao responder — certo ou errado — "Definição:" e o texto branco
            saem de cena pela esquerda e "Velocidade:" é escrito no lugar. */
         aoResponder: ()=> quadroTrocarRotulo('Velocidade:', 700),
@@ -4128,7 +4262,13 @@ function montarItemQuiz(item){
   /* 4) toca a faixa da pergunta e revela as opções no tempo certo */
   /* Sem legenda global aqui: o enunciado já está no card, e o overlay
      #legenda (z-index menor) apareceria por trás dele. */
-  if(item.faixa && idxFaixa(item.faixa) >= 0){
+  if(item.faixaEmCurso){
+    /* O áudio da pergunta é a faixa que JÁ está tocando: o card entrou no
+       meio dela. Não tocar de novo — e, sobretudo, não chamar rodarStory
+       aqui, que apagaria as cues restantes da faixa. As alternativas entram
+       quando o áudio terminar, por quizAoTerminarFaixa(). */
+    esconder('legenda');
+  } else if(item.faixa && idxFaixa(item.faixa) >= 0){
     tocarFaixaPorId(item.faixa);
     esconder('legenda');
     rodarStory([{ t: item.revelarEm || 3, fn: revelarOpcoes }]);
@@ -4453,21 +4593,39 @@ const EVENTOS = {
     { t:1.2,  fn:()=>{ digitarNoQuadro('Definição:', 1.2, 2.4, 'rotulo');
                        playSfx('pop', .35); } },
 
-    /* 4 s → 10 s: a definição é digitada no quadro, letra a letra. */
-    { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 10) },
+    /* A lista é digitada em ETAPAS, cada item no seu tempo de narração.
+       defIndice(i) dá o caractere onde o trecho i começa, então mexer no
+       texto não obriga a recontar nada aqui. */
+    { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 8.5, 'definicao',
+                                      0, defIndice(2)) },              // abertura + item 1
+    { t:8.5,  fn:()=> digitarNoQuadro(DEF_CINETICA, 8.5, 10, 'definicao',
+                                      defIndice(2), defIndice(3)) },   // item 2
+    { t:10.0, fn:()=> digitarNoQuadro(DEF_CINETICA, 10, 12, 'definicao',
+                                      defIndice(3), DEF_CINETICA.length) }, // item 3
 
-    /* 14 s: as torneiras são montadas FORA de quadro. Três segundos de
-       antecedência para que, quando a câmera chegar, as duas já estejam
-       pingando e a diferença de ritmo se leia na hora. */
-    { t:14.0, fn:()=> mostrarTorneiras() },
+    /* 18 s: o item 1 cresce e sai do plano do quadro, destacado dos outros. */
+    { t:18.0, fn:()=>{ quadroDestacarItem(1, 1.35, 700); playSfx('pop', .35); } },
 
-    /* 17 s: a câmera vai vê-las. Este e o cue de t=0 são os ÚNICOS
-       movimentos de câmera da faixa — nada de mexer no enquadramento por
-       conta própria no meio da narração. */
-    { t:17.0, fn:()=> irParaCamera(CAM_TORNEIRAS, true, 1800) }
+    /* 22 s: a pergunta aparece embaixo da lista, digitada, no corpo de
+       "Definição:". */
+    { t:22.0, fn:()=> digitarNoQuadro('O que é velocidade?', 22, 23.6, 'pergunta') },
 
-    /* A pergunta "Qual torneira goteja mais rápido?" não é cue: ela entra no
-       fim do áudio, por aoTerminarFaixa(). */
+    /* 26 s: o item 1 volta ao tamanho normal. */
+    { t:26.0, fn:()=> quadroDestacarItem(1, 1, 700) },
+
+    /* 27 s: torneiras montadas fora de quadro, já pingando quando a câmera
+       chegar — a diferença de ritmo se lê na hora, sem começar do zero. */
+    { t:27.0, fn:()=> mostrarTorneiras() },
+
+    /* 29 s: a câmera parte para as torneiras (chega aos 32 s) e a pergunta
+       some em fade. Este e o cue de t=0 são os ÚNICOS movimentos de câmera
+       da faixa. */
+    { t:29.0, fn:()=>{ irParaCamera(CAM_TORNEIRAS, true, 3000);
+                       quadroPerguntaSumir(900); } },
+
+    /* 36.7 s: entra o CARD da pergunta, ainda sem as alternativas — elas
+       aparecem quando o áudio acabar (ver `faixaEmCurso` no item). */
+    { t:36.7, fn:()=> abrirQuiz('torneiras') }
   ]),
 
   /* ------------------------------------------------------------------ */
@@ -4769,9 +4927,13 @@ function aoTerminarFaixa(){
     abrirQuiz('quiz1');
     return;
   }
+  /* Rede de segurança: normalmente o card já entrou em t=36.7 e o fim do
+     áudio é tratado por quizAoTerminarFaixa() (que revela as alternativas).
+     Só chegamos aqui se aquele cue não disparou — áudio mais curto que o
+     esperado, ou um salto pelo sumário. */
   if(id === 'dialogo1'){
     esconder('legenda');
-    abrirQuiz('torneiras');       // "Qual torneira goteja mais rápido?"
+    abrirQuiz('torneiras');
     return;
   }
   botaoAudioPronto(true);
@@ -4950,6 +5112,7 @@ function animar(){
   tickDigitacoes();         // máquina de escrever
   tickBotaoAudio();         // símbolo + anel de progresso do botão de áudio
   tickQuadroSaida(dt);      // troca de bloco no quadro (roda em tempo real)
+  tickQuadroAnims(dt);      // realce do item e fade da pergunta
   tickFades(dt);            // fade de objetos 3D (esvaziar/repor a bancada)
   tickCamera();             // easing da câmera
   tickOrbita(dt);           // órbita lenta
