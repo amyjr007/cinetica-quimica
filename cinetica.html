@@ -805,7 +805,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.6.2</div>
+  <div id="versao">v1.7.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -878,7 +878,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.6.2';
+const VERSAO = 'v1.7.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -914,7 +914,7 @@ const CORES = {
    Cada trecho ainda pode quebrar sozinho se não couber (é o que salva o
    retrato, cuja coluna é bem mais estreita). */
 const DEF_CINETICA =
-  'é a parte da Química que estuda\n' +
+  'É a parte da Química que estuda\n' +
   'a velocidade de uma reação química,\n' +
   'os fatores que a afetam\n' +
   'e as formas de controlá-la.';
@@ -1149,9 +1149,13 @@ function digitar(id, texto, t0, t1){
 /* Mesma máquina de escrever, mas o destino é a TEXTURA do quadro 3D em vez
    de um elemento de DOM — ver texturaQuadro(). O texto revelado fica pintado
    no quadro e não some quando a câmera muda ou a cena é remontada. */
-function digitarNoQuadro(texto, t0, t1){
-  quadroDefinir({ definicao: texto, revelado: 0 });
-  _digitacoes.push({ quadro:true, texto, t0, t1: Math.max(t1, t0 + .3), pronto:false });
+function digitarNoQuadro(texto, t0, t1, campo){
+  const alvo = (campo === 'rotulo') ? 'rotulo' : 'definicao';
+  if(alvo === 'rotulo') quadroDefinir({ rotulo: texto, revelarRotulo: 0 });
+  else                  quadroDefinir({ definicao: texto, revelado: 0 });
+  /* `quadro` guarda QUAL campo está sendo digitado — tickDigitacoes repassa
+     para quadroRevelar(). */
+  _digitacoes.push({ quadro:alvo, texto, t0, t1: Math.max(t1, t0 + .3), pronto:false });
 }
 function limparDigitacoes(){
   _digitacoes = [];
@@ -1169,7 +1173,7 @@ function tickDigitacoes(){
        nada, então repintar o canvas grande não acontece a cada frame. */
     if(d.quadro){
       const piscando = p < 1 && (Math.floor(t * 2) % 2 === 0);
-      quadroRevelar(p >= 1 ? d.texto.length : n, piscando);
+      quadroRevelar(p >= 1 ? d.texto.length : n, piscando, d.quadro);
       if(p >= 1) d.pronto = true;
       continue;
     }
@@ -1954,8 +1958,13 @@ const QUADRO_TXT = {
   titulo:    'Cinética Química',
   rotulo:    '',
   definicao: '',
+  /* Rótulo e definição são digitados SEPARADAMENTE (em tempos diferentes do
+     áudio), então cada um tem seu próprio contador de caracteres revelados e
+     sua própria barra de digitação. */
   revelado:  0,
-  caret:     false      // barra de digitação piscando (só enquanto digita)
+  caret:     false,
+  reveladoRotulo: 0,
+  caretRotulo:    false
 };
 
 /* Um layout por orientação. u/v são frações da textura (0..1).
@@ -1988,8 +1997,9 @@ const LAYOUT_QUADRO = {
      A textura é isotrópica (1920x1024 sobre 10.5x5.6: 10.5/1920 = 5.6/1024),
      então esses 63px valem a mesma distância na horizontal e na vertical —
      dá para usar a entrelinha como régua para mover na horizontal.
-       título      -15% e 2 linhas à esquerda (.550 -> .484). Cabe folgado:
-                   a borda esquerda dele para em ndcX -0.73.
+       título      -15%, e no total 2 + 1.5 linhas à esquerda
+                   (.550 -> .484 -> .4395). As 1.5 usam a entrelinha ATUAL
+                   (57px), que é o espaçamento que se vê na tela.
        rótulo/def  -10% e 0.75 linha à esquerda. A margem esquerda do texto é
                    o gargalo: a borda da tela fica em ndcX -1.00 e o texto
                    nasce a -0.93. Referência de medida = celular em pé
@@ -1998,11 +2008,11 @@ const LAYOUT_QUADRO = {
                    caractere; e em aparelhos de proporção mais estreita
                    (412x915) este valor já encosta em -1.01. O valor seguro
                    em qualquer celular é 0.5 linha (colEsq .2596).
-     A entrelinha acompanha os -10% do corpo (63 -> 57), senão o bloco ficaria
-     frouxo com a letra menor. */
-  retrato:  { colEsq:.2514, colDir:.8424, tituloU:.484,
-              tamTitulo:66, tamRotulo:48, tamDef:41,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:57 }
+     A entrelinha acompanha o corpo da definição (41 -> 37 pediu 57 -> 51),
+     senão o bloco ficaria frouxo com a letra menor. */
+  retrato:  { colEsq:.2514, colDir:.8424, tituloU:.4395,
+              tamTitulo:66, tamRotulo:48, tamDef:37,
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:51 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
@@ -2101,12 +2111,18 @@ function pintarQuadro(){
     c.fillStyle = gl; c.fillRect(ESQ, H * L.fileteV, LARG, 3);
   }
 
-  /* ---- 4) rótulo ("Definição:") ---- */
+  /* ---- 4) rótulo ("Definição:"), também revelado letra a letra ---- */
   c.textAlign = 'left';
   if(QUADRO_TXT.rotulo){
     c.font = '800 ' + L.tamRotulo + 'px ' + FONTE;
     c.fillStyle = '#ff9d33';
-    c.fillText(QUADRO_TXT.rotulo, ESQ, H * L.rotuloV);
+    const visR = QUADRO_TXT.rotulo.slice(0, QUADRO_TXT.reveladoRotulo);
+    const yR = H * L.rotuloV;
+    c.fillText(visR, ESQ, yR);
+    if(QUADRO_TXT.caretRotulo){
+      c.fillRect(ESQ + c.measureText(visR).width + 6,
+                 yR - L.tamRotulo * .74, 5, L.tamRotulo * .9);
+    }
   }
 
   /* ---- 5) definição, revelada caractere a caractere ---- */
@@ -2145,8 +2161,15 @@ function pintarQuadro(){
 /* Troca o conteúdo. Campos omitidos ficam como estão; passe '' para apagar. */
 function quadroDefinir(op){
   op = op || {};
-  if(op.titulo    !== undefined) QUADRO_TXT.titulo    = op.titulo;
-  if(op.rotulo    !== undefined) QUADRO_TXT.rotulo    = op.rotulo;
+  if(op.titulo !== undefined) QUADRO_TXT.titulo = op.titulo;
+  if(op.rotulo !== undefined){
+    QUADRO_TXT.rotulo = op.rotulo;
+    /* Sem `revelarRotulo`, o rótulo entra INTEIRO. Quem digita letra a letra
+       é digitarNoQuadro(txt, t0, t1, 'rotulo'), que passa 0 aqui. */
+    QUADRO_TXT.reveladoRotulo = (op.revelarRotulo === undefined)
+      ? op.rotulo.length : op.revelarRotulo;
+    QUADRO_TXT.caretRotulo = false;
+  }
   if(op.definicao !== undefined){
     QUADRO_TXT.definicao = op.definicao;
     QUADRO_TXT.revelado  = op.revelado || 0;
@@ -2156,14 +2179,18 @@ function quadroDefinir(op){
   pintarQuadro();
 }
 
-/* Quantos caracteres da definição estão visíveis. Só repinta se mudou algo —
-   pintarQuadro() roda a cada frame da digitação e o canvas é grande. */
-function quadroRevelar(n, caret){
-  const novoN = clamp(Math.floor(n), 0, QUADRO_TXT.definicao.length);
+/* Quantos caracteres estão visíveis. `campo` é 'definicao' (padrão) ou
+   'rotulo'. Só repinta se mudou algo — isto roda a cada frame da digitação e
+   o canvas é grande. */
+function quadroRevelar(n, caret, campo){
+  const alvo   = (campo === 'rotulo') ? 'rotulo' : 'definicao';
+  const chaveN = (alvo === 'rotulo') ? 'reveladoRotulo' : 'revelado';
+  const chaveC = (alvo === 'rotulo') ? 'caretRotulo'    : 'caret';
+  const novoN = clamp(Math.floor(n), 0, QUADRO_TXT[alvo].length);
   const novoC = !!caret;
-  if(novoN === QUADRO_TXT.revelado && novoC === QUADRO_TXT.caret) return;
-  QUADRO_TXT.revelado = novoN;
-  QUADRO_TXT.caret    = novoC;
+  if(novoN === QUADRO_TXT[chaveN] && novoC === QUADRO_TXT[chaveC]) return;
+  QUADRO_TXT[chaveN] = novoN;
+  QUADRO_TXT[chaveC] = novoC;
   pintarQuadro();
 }
 
@@ -2172,6 +2199,7 @@ function quadroRevelar(n, caret){
 function quadroLimpar(){
   QUADRO_TXT.rotulo = ''; QUADRO_TXT.definicao = '';
   QUADRO_TXT.revelado = 0; QUADRO_TXT.caret = false;
+  QUADRO_TXT.reveladoRotulo = 0; QUADRO_TXT.caretRotulo = false;
   pintarQuadro();
 }
 
@@ -2610,16 +2638,15 @@ function prepararBancada(op){
   equipamentos.add(criarTripe(-4.8, -.6));
   equipamentos.add(criarTripe( 4.8, -.6));
 
-  /* rótulos flutuantes 3D (sprites) sobre cada béquer */
-  const rotA = criarRotulo3D('A', -2.6, 2.25, .2, '#6fb7ff');
-  const rotB = criarRotulo3D('B',  2.6, 2.25, .2, '#ff9d33');
-  equipamentos.add(rotA); equipamentos.add(rotB);
+  /* Os rótulos 3D 'A' e 'B' que flutuavam sobre os béqueres foram removidos:
+     poluíam o enquadramento e a narração já diz de qual béquer está falando.
+     criarRotulo3D() continua no arquivo, para dicas na cena quando precisar. */
 
   atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); bunsen.atualizar(dt); });
 
   configurarSombras(raiz);
   cenaMontada = 'bancada';
-  bancada = { A, B, bunsen, rotA, rotB, equipamentos, raiz };
+  bancada = { A, B, bunsen, equipamentos, raiz };
   return bancada;
 }
 
@@ -4125,18 +4152,17 @@ const EVENTOS = {
                        quadroDefinir({ titulo:'Cinética Química', rotulo:'', definicao:'' });
                        irParaCamera(camDefinicao(), true, 1600); orbitaSuave = 0; } },
 
-    /* Câmera já chegou: aparece o rótulo, embaixo do título. */
-    { t:2.0,  fn:()=>{ quadroDefinir({ rotulo:'Definição:' }); playSfx('pop', .35); } },
+    /* Câmera já chegou: o rótulo é DIGITADO, igual à definição. */
+    { t:2.0,  fn:()=>{ digitarNoQuadro('Definição:', 2, 3.2, 'rotulo');
+                       playSfx('pop', .35); } },
 
     /* 4 s → 10 s: a definição é digitada no quadro, letra a letra. */
-    { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 10) },
+    { t:4.0,  fn:()=> digitarNoQuadro(DEF_CINETICA, 4, 10) }
 
-    /* Depois da digitação, a câmera abre para o plano geral: é aqui que dá
-       para ver que o texto continua CRAVADO no quadro, ao fundo.
-       SEM religar orbitaSuave: a órbita lenta é só da CAPA. A partir do
-       "Começar" a câmera fica parada, senão o quadro sairia de quadro
-       sozinho no meio da leitura. */
-    { t:12.0, fn:()=> irParaCamera(CAM_GERAL, true, 2000) }
+    /* NÃO acrescente cue de câmera aqui. Depois dos 10 s a faixa segue só com
+       o áudio, e o enquadramento fica parado até o fim: a câmera só se mexe
+       quando o roteiro mandar, nunca sozinha no meio da narração. Tinha um
+       zoom out para CAM_GERAL em t=12 e ele foi removido por isso. */
   ]),
 
   /* ------------------------------------------------------------------ */
