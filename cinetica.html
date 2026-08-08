@@ -805,7 +805,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.6.0</div>
+  <div id="versao">v1.6.1</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -878,7 +878,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.6.0';
+const VERSAO = 'v1.6.1';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -1984,9 +1984,22 @@ const LAYOUT_QUADRO = {
      Fontes 30% menores que a calibragem anterior. Não é perda de tamanho na
      tela: a câmera nova olha o quadro de 16.6 de distância contra 24.1 da
      anterior, então a definição sai com ~14px de tela nos dois casos. */
-  retrato:  { colEsq:.276, colDir:.867, tituloU:.550,
-              tamTitulo:78, tamRotulo:53, tamDef:45,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:63 }
+  /* Uma "linha" de deslocamento = 63px de textura, a entrelinha anterior.
+     A textura é isotrópica (1920x1024 sobre 10.5x5.6: 10.5/1920 = 5.6/1024),
+     então esses 63px valem a mesma distância na horizontal e na vertical —
+     dá para usar a entrelinha como régua para mover na horizontal.
+       título      -15% e 2 linhas à esquerda (.550 -> .484). Cabe folgado:
+                   a borda esquerda dele para em ndcX -0.73.
+       rótulo/def  -10% e MEIA linha à esquerda, não uma nem 0.75. A margem
+                   esquerda do texto é o gargalo — ela nasce a ndcX -0.93 e a
+                   borda da tela é -1.00. Medido na tela mais estreita
+                   (412x915): 0.5 linha -> -0.98 (passa), 0.75 -> -1.01 e
+                   1 linha -> -1.04 (o primeiro caractere seria cortado).
+     A entrelinha acompanha os -10% do corpo (63 -> 57), senão o bloco ficaria
+     frouxo com a letra menor. */
+  retrato:  { colEsq:.2596, colDir:.8506, tituloU:.484,
+              tamTitulo:66, tamRotulo:48, tamDef:41,
+              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:57 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
