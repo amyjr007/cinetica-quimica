@@ -11,7 +11,7 @@
        (áudios, imagens, three.js do CDN, manifest...)
    ========================================================================== */
 
-const CACHE = 'cinetica-v1.3.1';
+const CACHE = 'cinetica-v1.4.0';
 
 /* Arquivos essenciais pré-cacheados na instalação.
    Mantenha curto: áudios/imagens entram sozinhos no cache em runtime. */

@@ -755,7 +755,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.3.1</div>
+  <div id="versao">v1.4.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -813,21 +813,30 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.3.1';
+const VERSAO = 'v1.4.0';
 
-/* Espelha a paleta do CSS (tema vermelho). */
 const CORES = {
-  bg:     0x150a09,   /* grafite-vinho — fundo da cena e da névoa */
+  /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
+     acerto). São elas que espelham a paleta vermelha do CSS. ----------- */
   quente: 0xff9d33,
   fogo:   0xff5a3c,
   frio:   0x6fb7ff,
-  rubi:   0xff3b30,   /* acento principal (era lima) */
+  rubi:   0xff3b30,   /* acento principal da UI */
   acerto: 0x3ddc84,   /* produto formado / colisão efetiva */
   roxo:   0xc86bff,
-  cinza:  0x7f6f6c,
-  vidro:  0xdfe9ff,
-  bancada:0x3a201d,   /* tampo vinho escuro */
-  madeira:0x2a1512
+  cinza:  0x7b7a78,   /* colisão não efetiva */
+
+  /* --- DA SALA: neutras de propósito --------------------------------
+     O vermelho é do TEMA e vive na UI (painéis, botões, títulos, badges)
+     e nas cores semânticas acima. A sala 3D é um laboratório de verdade:
+     madeira natural, aço, parede cinza. Quando o ambiente inteiro era
+     vinho — fundo, névoa, parede, moldura e ainda uma luz rubi por cima
+     — a madeira virava mogno e o vidro do béquer puxava para o rosa. */
+  bg:      0x131312,  /* fundo da cena e da névoa — grafite neutro */
+  parede:  0x1d1c1b,
+  chao:    0x121111,
+  moldura: 0x4e4c47,  /* borda do quadro: cinza-alumínio, sem vinho */
+  vidro:   0xdfe9ff
 };
 
 /* Definição que a faixa 'dialogo1' digita NO QUADRO (não é legenda de tela).
@@ -1464,7 +1473,7 @@ function toon(cor, extra){
 function contorno(mesh, esp){
   const m = new THREE.Mesh(
     mesh.geometry,
-    new THREE.MeshBasicMaterial({ color:0x03100c, side:THREE.BackSide })
+    new THREE.MeshBasicMaterial({ color:0x0b0b0a, side:THREE.BackSide })
   );
   m.scale.multiplyScalar(esp || 1.045);
   m.renderOrder = -1;
@@ -1501,9 +1510,12 @@ function texturaMadeira(){
   const img = c.createImageData(N, N);
   const d = img.data;
 
-  /* Duas cores de madeira (clara e escura) que serão misturadas pelo anel. */
-  const clara  = [146, 96, 58];
-  const escura = [ 78, 44, 26];
+  /* Duas cores de madeira (clara e escura) que serão misturadas pelo anel.
+     Carvalho, não mogno: o par antigo ([146,96,58] / [78,44,26]) era muito
+     saturado no vermelho e, multiplicado pela cor do material, deixava o
+     tampo cor de vinho. */
+  const clara  = [158, 124, 88];
+  const escura = [ 92,  66, 44];
 
   for(let y = 0; y < N; y++){
     for(let x = 0; x < N; x++){
@@ -1577,18 +1589,20 @@ function prepararAmbiente(){
     const N = 256;
     const cv = document.createElement('canvas'); cv.width = cv.height = N;
     const c = cv.getContext('2d');
+    /* Tudo em CINZA NEUTRO: é isto que o metal reflete. Com o ambiente em
+       tons de vinho, o aço do tripé e do Bunsen saía cor de cobre. */
     if(i === 2){                     /* +Y — teto: as luminárias do laboratório */
-      c.fillStyle = '#6d5b55'; c.fillRect(0, 0, N, N);
+      c.fillStyle = '#5e5c5a'; c.fillRect(0, 0, N, N);
       const g = c.createRadialGradient(N*.5, N*.42, 6, N*.5, N*.42, N*.62);
-      g.addColorStop(0, '#ffffff'); g.addColorStop(.35, '#e8d9cf');
-      g.addColorStop(.75, '#8a7169'); g.addColorStop(1, '#4a3833');
+      g.addColorStop(0, '#ffffff'); g.addColorStop(.35, '#eae7e3');
+      g.addColorStop(.75, '#8b8885'); g.addColorStop(1, '#3f3d3b');
       c.fillStyle = g; c.fillRect(0, 0, N, N);
     } else if(i === 3){              /* -Y — piso escuro */
-      c.fillStyle = '#2a1a17'; c.fillRect(0, 0, N, N);
+      c.fillStyle = '#1e1d1c'; c.fillRect(0, 0, N, N);
     } else {                         /* laterais — horizonte claro em cima */
       const g = c.createLinearGradient(0, 0, 0, N);
-      g.addColorStop(0, '#d9c6bd'); g.addColorStop(.34, '#8d7169');
-      g.addColorStop(.62, '#4a2f2a'); g.addColorStop(1, '#1d100e');
+      g.addColorStop(0, '#d6d3cf'); g.addColorStop(.34, '#8a8784');
+      g.addColorStop(.62, '#454341'); g.addColorStop(1, '#171716');
       c.fillStyle = g; c.fillRect(0, 0, N, N);
       /* faixa de luz do teto refletida na parede */
       c.fillStyle = 'rgba(255,245,235,.30)';
@@ -1623,9 +1637,11 @@ function texturaParedeSlide(){
 
   /* 1) base: gradiente vertical (mais claro em cima, onde bate a luz) */
   const g = c.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0,   '#2b1613');
-  g.addColorStop(.55, '#1d0f0d');
-  g.addColorStop(1,   '#130a08');
+  /* Base em grafite neutro. As faixas e as moléculas desenhadas por cima
+     continuam com os acentos do tema — o que sai do vermelho é a PAREDE. */
+  g.addColorStop(0,   '#2a2928');
+  g.addColorStop(.55, '#1c1b1a');
+  g.addColorStop(1,   '#131312');
   c.fillStyle = g; c.fillRect(0, 0, W, H);
 
   /* --- ÁREA DE SLIDE ---------------------------------------------------
@@ -1927,22 +1943,23 @@ function pintarQuadro(){
   const c = _ctxQuadro, W = QUADRO_W, H = QUADRO_H;
   const FONTE = '"Segoe UI", system-ui, Roboto, Arial, sans-serif';
 
-  /* ---- 1) fundo do quadro ---- */
+  /* ---- 1) fundo do quadro — grafite neutro, sem vinho ---- */
   const g = c.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0,   '#241110');   // luz do teto bate em cima
-  g.addColorStop(.45, '#180c0a');
-  g.addColorStop(1,   '#120807');
+  g.addColorStop(0,   '#232322');   // luz do teto bate em cima
+  g.addColorStop(.45, '#191918');
+  g.addColorStop(1,   '#131312');
   c.fillStyle = g; c.fillRect(0, 0, W, H);
 
   /* Brilho suave no canto superior esquerdo (a key light vem da direita/alto,
      mas o quadro é fosco: um clarão discreto tira o ar de retângulo chapado). */
   const br = c.createRadialGradient(W*.30, H*.16, 20, W*.30, H*.16, W*.62);
-  br.addColorStop(0, 'rgba(255,220,200,.055)');
-  br.addColorStop(1, 'rgba(255,220,200,0)');
+  br.addColorStop(0, 'rgba(255,250,244,.05)');
+  br.addColorStop(1, 'rgba(255,250,244,0)');
   c.fillStyle = br; c.fillRect(0, 0, W, H);
 
-  /* Fio interno, como a borda de um quadro branco de sala de aula. */
-  c.strokeStyle = 'rgba(255,59,48,.14)'; c.lineWidth = 4;
+  /* Fio interno, como a borda de um quadro branco de sala de aula. Cinza, e
+     não rubi: a borda do quadro não entra no tema vermelho. */
+  c.strokeStyle = 'rgba(255,255,255,.10)'; c.lineWidth = 4;
   c.strokeRect(W*.035, H*.055, W*.93, H*.885);
 
   /* ---- 2) área útil: depende da orientação (ver LAYOUT_QUADRO) ---- */
@@ -2093,10 +2110,14 @@ function iniciar3D(){
   /* Luzes — CALIBRADAS: no toon shading cada luz devolve até 1.0 de
      irradiância e elas SOMAM. Intensidades altas estouram a cena em branco.
      Total somado aqui fica ~1.2, que preserva os tons escuros do laboratório. */
-  scene.add(new THREE.HemisphereLight(0xffd9c9, 0x1a0a08, .32));
+  /* Nenhuma luz é vermelha: a rim light era rubi e banhava a sala inteira de
+     vinho — era ela que fazia a madeira virar mogno. Agora é a lâmpada do
+     teto, branco-quente, e o contraste de temperatura fica por conta da fill
+     azulada, que já existia. */
+  scene.add(new THREE.HemisphereLight(0xfff0e6, 0x1a1918, .32));
   const key  = new THREE.DirectionalLight(0xfff0d8, .55); key.position.set(5, 9, 6);   scene.add(key);
   const fill = new THREE.DirectionalLight(CORES.frio, .18); fill.position.set(-6, 4, -4); scene.add(fill);
-  const rim  = new THREE.PointLight(CORES.rubi, .35, 20);   rim.position.set(0, 5.5, -3); scene.add(rim);
+  const rim  = new THREE.PointLight(0xffe9d6, .30, 20);    rim.position.set(0, 5.5, -3); scene.add(rim);
 
   irParaCamera(CAM_GERAL, false);
   window.addEventListener('resize', aoRedimensionar);
@@ -2160,23 +2181,23 @@ function criarSala(){
 
   /* Tampo em MADEIRA (textura procedural com veios + bump). */
   const tampo = new THREE.Mesh(new THREE.BoxGeometry(13, .38, 6),
-    madeira({ repeteU:3.0, repeteV:1.35, cor:0xd8b48c, rugosidade:.58 }));
+    madeira({ repeteU:3.0, repeteV:1.35, cor:0xdcc3a4, rugosidade:.58 }));
   tampo.position.set(0, -.19, 0); g.add(tampo);
 
   /* Friso da borda: madeira mais escura e mais fechada. */
   const borda = new THREE.Mesh(new THREE.BoxGeometry(13.2, .1, 6.2),
-    madeira({ repeteU:6, repeteV:1, cor:0x8a5d3c, rugosidade:.5 }));
+    madeira({ repeteU:6, repeteV:1, cor:0x8f6f52, rugosidade:.5 }));
   borda.position.set(0, .01, 0); g.add(borda);
 
   /* Pés de madeira escura. */
   [[-5.6, -2.2], [5.6, -2.2], [-5.6, 2.2], [5.6, 2.2]].forEach(([x, z])=>{
     const pe = new THREE.Mesh(new THREE.BoxGeometry(.3, 3.2, .3),
-      madeira({ repeteU:1, repeteV:4, cor:0x7a4e30, rugosidade:.68 }));
+      madeira({ repeteU:1, repeteV:4, cor:0x7d5f45, rugosidade:.68 }));
     pe.position.set(x, -1.95, z); g.add(pe);
   });
 
   /* Parede + quadro de projeção ao fundo. */
-  const parede = new THREE.Mesh(new THREE.PlaneGeometry(30, 16), toon(0x1e0f0d));
+  const parede = new THREE.Mesh(new THREE.PlaneGeometry(30, 16), toon(CORES.parede));
   parede.position.set(0, 4, -6.2); g.add(parede);
 
   /* O quadro carrega a textura de canvas onde o texto fica CRAVADO — ver
@@ -2188,7 +2209,7 @@ function criarSala(){
   const quadro = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 5.6),
     new THREE.MeshBasicMaterial({ map: texturaQuadro(), fog: false }));
   quadro.position.set(0, 3.4, -6.05); g.add(quadro);
-  const moldura = new THREE.Mesh(new THREE.PlaneGeometry(11, 6.1), toon(0x4a2a26));
+  const moldura = new THREE.Mesh(new THREE.PlaneGeometry(11, 6.1), toon(CORES.moldura));
   moldura.position.set(0, 3.4, -6.1); g.add(moldura);
   g.userData.quadro = quadro;
 
@@ -2209,7 +2230,7 @@ function criarSala(){
   g.userData.paredeLateral = paredeLateral;
 
   /* Chão discreto */
-  const chao = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), toon(0x100706));
+  const chao = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), toon(CORES.chao));
   chao.rotation.x = -Math.PI/2; chao.position.y = -3.6; g.add(chao);
 
   return g;
@@ -2440,7 +2461,7 @@ function trazerEquipamentos(ms){
 function criarRotulo3D(txt, x, y, z, cor){
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
   const c = cv.getContext('2d');
-  c.fillStyle = 'rgba(26,11,10,.85)';
+  c.fillStyle = 'rgba(20,20,19,.85)';
   c.beginPath(); c.roundRect ? c.roundRect(28,18,200,92,26) : c.rect(28,18,200,92); c.fill();
   c.strokeStyle = cor; c.lineWidth = 5; c.stroke();
   c.fillStyle = cor; c.font = 'bold 62px Segoe UI, system-ui, sans-serif';

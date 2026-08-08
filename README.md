@@ -111,6 +111,23 @@ de 60%, porque a tela em pé não enquadra os 10.5 de largura do quadro. Cada va
 de par com uma câmera — `CAM_QUADRO_DEF` e `CAM_QUADRO_DEF_P`, escolhidas por
 `camDefinicao()`.
 
+## Paleta: onde o vermelho entra e onde não entra
+
+`CORES` está dividida em duas metades, e a divisão é proposital:
+
+- **semânticas** (`quente`, `fogo`, `frio`, `rubi`, `acerto`, `roxo`, `cinza`) — significam
+  alguma coisa e espelham o tema vermelho do CSS. Vivem na UI e nos elementos didáticos.
+- **da sala** (`bg`, `parede`, `chao`, `moldura`, `vidro`) — **neutras**. A cena 3D é um
+  laboratório de verdade: madeira natural, aço, parede cinza.
+
+Antes, o ambiente inteiro era vinho — fundo, névoa, parede, moldura do quadro e ainda uma
+`PointLight` rubi por cima de tudo. O resultado é que a madeira virava mogno e o vidro do
+béquer puxava para o rosa. Se for mexer nas luzes, **nenhuma delas deve ser vermelha**: o
+contraste de temperatura vem da *fill* azulada contra a *key* branco-quente.
+
+O cubemap de `prepararAmbiente()` também é cinza neutro — é ele que o metal reflete, e em
+tons de vinho o aço do tripé e do Bunsen saía cor de cobre.
+
 ## Cenário
 
 A sala tem duas paredes. A do **fundo** carrega o quadro onde os gráficos são projetados.
