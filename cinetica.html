@@ -125,6 +125,41 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   animation:brilhar .8s steps(1) infinite; margin-left:2px;
 }
 
+/* ---------- Frase no TOPO da tela (dialogo1.1) ----------
+   Largura contida para não passar por baixo do botão do sumário, que fica no
+   canto superior esquerdo. */
+#frase{
+  left:50%; top:calc(10% + env(safe-area-inset-top)); transform:translate(-50%,-10px);
+  width:min(80vw,640px); text-align:center;
+}
+#frase.show{ transform:translate(-50%,0); }
+#frase .caixa{
+  display:inline-block; padding:.6em 1em; border-radius:14px;
+  background:var(--painel); border:1px solid var(--borda); box-shadow:var(--sombra);
+  backdrop-filter:blur(9px);
+  font-size:clamp(16px,4.2vw,24px); font-weight:700; line-height:1.4; color:var(--texto);
+}
+
+/* ---------- Divisão matemática (dialogo1.1) ----------
+   Cada parte entra por conta própria: o numerador primeiro, depois o traço
+   junto com o denominador. */
+#divisao{
+  left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(86vw,560px); text-align:center; z-index:30;
+}
+#divisao .parte{
+  font-size:clamp(16px,4.2vw,24px); font-weight:800; color:var(--quente);
+  padding:.12em 0; opacity:0; transform:translateY(7px);
+  transition:opacity .6s ease, transform .6s ease;
+}
+#divisao .parte.vis{ opacity:1; transform:translateY(0); }
+#divisao .traco{
+  height:3px; width:0; margin:.4em auto; border-radius:3px;
+  background:linear-gradient(90deg,var(--rubi),var(--quente),var(--rubi));
+  transition:width .55s cubic-bezier(.4,.05,.2,1);
+}
+#divisao .traco.vis{ width:100%; }
+
 /* ---------- Cartão de fórmula ---------- */
 #formula{
   left:50%; top:16%; transform:translate(-50%,-14px) scale(.9);
@@ -673,6 +708,16 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <!-- Legenda / máquina de escrever -->
   <div id="legenda" class="overlay semclique"><span class="caixa"><span id="legendaTxt"></span><i class="cursor" id="legendaCursor">&nbsp;</i></span></div>
 
+  <!-- Frase curta no TOPO da tela (dialogo1.1) -->
+  <div id="frase" class="overlay semclique"><span class="caixa" id="fraseTxt"></span></div>
+
+  <!-- Divisão "quantidade de gotas / intervalo de tempo" (dialogo1.1) -->
+  <div id="divisao" class="overlay semclique">
+    <div class="parte" id="divNum">Quantidade de gotas</div>
+    <div class="traco" id="divTraco"></div>
+    <div class="parte" id="divDen">intervalo de tempo</div>
+  </div>
+
   <!-- Painel de gráficos (SVG) -->
   <div id="painelGrafico" class="overlay semclique">
     <div class="moldura">
@@ -819,7 +864,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.12.0</div>
+  <div id="versao">v1.13.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -892,7 +937,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.12.0';
+const VERSAO = 'v1.13.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -970,6 +1015,9 @@ const FAIXAS = [
   { id:'dialogo1W', arquivo:'audios/dialogo1W.mp3', titulo:'Torneiras ✗', dur:10, ramo:true,
     texto:'Olhe de novo o intervalo entre as gotas: na B elas caem bem mais juntas.' },
 
+  { id:'dialogo1_1', arquivo:'audios/dialogo1.1.mp3', titulo:'Como medir a velocidade', dur:19,
+    texto:'Para comparar as duas, contamos quantas gotas caem num mesmo intervalo de tempo.' },
+
   { id:'velocidade', arquivo:'audios/velocidade.mp3', titulo:'Velocidade de reação', dur:42,
     texto:'Velocidade média de reação é o quanto a concentração muda dividido pelo tempo gasto: v = ΔC / Δt, em mol por litro por segundo.' },
 
@@ -1042,7 +1090,7 @@ const CENAS_PERSISTENTES = [
 
 /* Que cena 3D cada faixa usa. 'bancada' | 'arena' | 'quadro' */
 const CENA_DA_FAIXA = {
-  dialogo1:'bancada', dialogo1R:'bancada', dialogo1W:'bancada',
+  dialogo1:'bancada', dialogo1R:'bancada', dialogo1W:'bancada', dialogo1_1:'bancada',
   velocidade:'quadro', colisoes:'arena', ativacao:'quadro',
   fator_conc:'bancada', fator_superficie:'bancada', fator_temp:'bancada',
   fator_catalisador:'bancada',
@@ -1087,7 +1135,8 @@ function mostrar(id){ const e = $(id); if(e) e.classList.add('show'); }
 function esconder(id){ const e = $(id); if(e) e.classList.remove('show'); }
 
 /* Todos os overlays que somem na troca de faixa. */
-const OVERLAYS = ['titulo','formula','badges','legenda','painelGrafico','termometro','quiz','quiz3dAviso','play'];
+const OVERLAYS = ['titulo','formula','badges','legenda','painelGrafico','termometro',
+                  'quiz','quiz3dAviso','play','frase','divisao'];
 function esconderOverlays(){
   OVERLAYS.forEach(esconder);
   const pf = $('painelFormula'); if(pf) pf.classList.remove('vis');
@@ -1155,6 +1204,14 @@ function esconderFormula(){
 /* Pulsa a fórmula onde ela estiver. */
 function pulsarFormula(){
   pulsar($('painelFormula').classList.contains('vis') ? $('painelFormula') : $('formula'));
+}
+
+/* Devolve a divisão ao estado "nada apareceu ainda" — as partes entram uma a
+   uma pela coreografia, e sem isto um replay já as encontraria visíveis. */
+function zerarDivisao(){
+  ['divNum','divTraco','divDen'].forEach((id)=>{
+    const e = $(id); if(e) e.classList.remove('vis');
+  });
 }
 
 /* ---------- Badges de conceito ---------- */
@@ -2635,10 +2692,12 @@ function limparGrupo(g){
 function desmontarCena(){
   /* Antes de descartar: limparGrupo() dá dispose() nos materiais, e um fade
      em curso continuaria escrevendo opacidade em material morto. */
-  _fades.length = 0;
+  _fades.length = 0; _pulsos.length = 0;
   limparGrupo(raizCena);
   raizCena = null; cenaMontada = null; bancada = null; arena = null;
   torneiras = null;              // foram junto com a raiz
+  /* Só solta as referências: limparGrupo() já deu dispose nos sprites. */
+  Object.keys(_anotacoes).forEach(k => delete _anotacoes[k]);
   atualizadores.length = 0;
 }
 function novaRaiz(){
@@ -3070,15 +3129,101 @@ function mostrarTorneiras(){
   const B = criarTorneira({ x:TORNEIRA_X, z:-2.9, para: 1, taxa:5, corGota:CORES.quente });
   g.add(A.grupo); g.add(B.grupo);
 
-  g.add(criarRotulo3D('A', TORNEIRA_X, 2.25, -0.3, '#6fb7ff'));
-  g.add(criarRotulo3D('B', TORNEIRA_X, 2.25, -2.9, '#ff9d33'));
+  const rotA = criarRotulo3D('A', TORNEIRA_X, 2.25, -0.3, '#6fb7ff');
+  const rotB = criarRotulo3D('B', TORNEIRA_X, 2.25, -2.9, '#ff9d33');
+  g.add(rotA); g.add(rotB);
 
   raizCena.add(g);
   configurarSombras(g);
   atualizadores.push((dt)=>{ A.atualizar(dt); B.atualizar(dt); });
 
-  torneiras = { grupo:g, A, B };
+  /* rotA/rotB guardados: a dialogo1.1 pulsa esses rótulos. */
+  torneiras = { grupo:g, A, B, rotA, rotB };
   return torneiras;
+}
+
+/* --------------------------------------------------------------------------
+   ANOTAÇÕES 3D das torneiras ("10 gotas", "em 2 s"…)
+   Sprite com o canvas dimensionado ao texto, para a pílula de fundo ficar
+   justa em qualquer comprimento. Sem mipmap, pelo mesmo motivo do quadro:
+   nesta escala o texto é minificado e o filtro trilinear o borraria.
+   -------------------------------------------------------------------------- */
+function criarTexto3D(txt, x, y, z, cor, alturaMundo){
+  const F = 96;
+  const FONTE = '800 ' + F + 'px "Segoe UI", system-ui, Roboto, Arial, sans-serif';
+  const cv = document.createElement('canvas');
+  const c = cv.getContext('2d');
+  c.font = FONTE;                                   // mede com o canvas padrão
+  cv.width  = Math.ceil(c.measureText(txt).width) + 64;
+  cv.height = Math.round(F * 1.62);
+  c.font = FONTE;                                   // redimensionar zerou o estado
+
+  const r = cv.height * .34;
+  c.fillStyle = 'rgba(18,17,16,.88)';
+  c.beginPath();
+  if(c.roundRect) c.roundRect(3, 3, cv.width-6, cv.height-6, r);
+  else            c.rect(3, 3, cv.width-6, cv.height-6);
+  c.fill();
+  c.strokeStyle = cor; c.lineWidth = 5; c.stroke();
+  c.fillStyle = cor; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(txt, cv.width/2, cv.height/2 + 2);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+  const h = alturaMundo || .42;
+  sp.scale.set(h * cv.width / cv.height, h, 1);
+  sp.position.set(x, y, z);
+  sp.renderOrder = 6;
+  return sp;
+}
+
+/* Anotações criadas pela coreografia, por chave — a chave também evita que um
+   seek para trás rearme o cue e crie o mesmo texto duas vezes. */
+const _anotacoes = {};
+function anotarTorneira(chave, txt, cor, z, y, h){
+  if(!torneiras || _anotacoes[chave]) return null;
+  const sp = criarTexto3D(txt, TORNEIRA_X, (y === undefined ? 1.92 : y), z, cor, h);
+  torneiras.grupo.add(sp);
+  _anotacoes[chave] = sp;
+  return sp;
+}
+function limparAnotacoes(){
+  Object.keys(_anotacoes).forEach((k)=>{
+    const sp = _anotacoes[k];
+    if(sp){
+      if(sp.parent) sp.parent.remove(sp);
+      if(sp.material){
+        if(sp.material.map) sp.material.map.dispose();
+        sp.material.dispose();
+      }
+    }
+    delete _anotacoes[k];
+  });
+}
+
+/* --------------------------------------------------------------------------
+   PULSO de um sprite. pulsar() do DOM não serve aqui: sprite não tem CSS.
+   Roda em tempo real e devolve a escala original no fim, para não acumular.
+   -------------------------------------------------------------------------- */
+let _pulsos = [];
+function pulsarSprite(sp, vezes, ms){
+  if(!sp) return;
+  _pulsos = _pulsos.filter(p => p.sp !== sp);
+  _pulsos.push({ sp, sx:sp.scale.x, sy:sp.scale.y,
+                 t:0, dur:((ms || 620) / 1000) * (vezes || 2), vezes:vezes || 2 });
+}
+function tickPulsos(dt){
+  for(let i = _pulsos.length - 1; i >= 0; i--){
+    const p = _pulsos[i];
+    p.t += dt;
+    const f = clamp(p.t / p.dur, 0, 1);
+    /* sen² dá `vezes` corcovas inteiras, sempre >= 1: o rótulo só cresce. */
+    const k = 1 + .30 * Math.pow(Math.sin(f * Math.PI * p.vezes), 2);
+    p.sp.scale.set(p.sx * k, p.sy * k, 1);
+    if(f >= 1){ p.sp.scale.set(p.sx, p.sy, 1); _pulsos.splice(i, 1); }
+  }
 }
 
 /* Sprite de texto (rótulo A / B / dicas na cena). */
@@ -4080,9 +4225,10 @@ const QUIZZES = {
   torneiras: {
     titulo: 'Torneiras',
     /* Sem isto, terminarQuiz() aplicaria o placar e pularia direto para o
-       encerramento do app. Aqui a pergunta só devolve o comando ao aluno —
-       e marca que o próximo play deve voltar a câmera para o quadro. */
-    aoTerminar: ()=>{ camVoltarAoQuadro = true; botaoAudioPronto(true); },
+       encerramento do app. Aqui a pergunta só devolve o comando ao aluno: o
+       play acende e leva para a dialogo1.1, que continua nas torneiras — por
+       isso a câmera NÃO volta para o quadro. */
+    aoTerminar: ()=> botaoAudioPronto(true),
     itens: [
       { tipo:'alternativas',
         enunciado:'Qual torneira goteja mais rápido?',
@@ -4661,6 +4807,32 @@ const EVENTOS = {
   ]),
 
   /* ------------------------------------------------------------------ */
+  /* 1b. DIALOGO1.1 — como se mede a velocidade                          */
+  /* ------------------------------------------------------------------ */
+  /* NENHUM cue de câmera: a faixa continua exatamente no plano das
+     torneiras onde a dialogo1 parou, e é sobre elas que a conta é feita. */
+  dialogo1_1: () => rodarStory([
+    { t:0.0,  fn:()=>{ limparAnotacoes(); zerarDivisao(); } },
+
+    /* 1.2 s → 3 s: a pergunta é digitada no alto da tela. */
+    { t:1.2,  fn:()=>{ mostrar('frase');
+                       digitar('fraseTxt', 'Como a gente sabe qual é mais rápida?', 1.2, 3.0); } },
+
+    /* 6 s: entra o numerador; 6.7 s: o traço e o denominador. */
+    { t:6.0,  fn:()=>{ mostrar('divisao'); $('divNum').classList.add('vis'); } },
+    { t:6.7,  fn:()=>{ $('divTraco').classList.add('vis'); $('divDen').classList.add('vis'); } },
+
+    /* Torneira B: pulsa o rótulo e anota a contagem entre ele e o bico. */
+    { t:10.4, fn:()=>{ pulsarSprite(torneiras && torneiras.rotB, 2); playSfx('pop', .35); } },
+    { t:11.2, fn:()=> anotarTorneira('b1', '10 gotas', '#ff9d33', -2.35) },
+    { t:12.0, fn:()=> anotarTorneira('b2', 'em 2 s',   '#ff9d33', -3.60) },
+
+    /* Torneira A, mesma coreografia, numa anotação só. */
+    { t:13.4, fn:()=>{ pulsarSprite(torneiras && torneiras.rotA, 2); playSfx('pop', .35); } },
+    { t:14.8, fn:()=> anotarTorneira('a1', '2 gotas em 2 s', '#6fb7ff', -0.30) }
+  ]),
+
+  /* ------------------------------------------------------------------ */
   /* 2. VELOCIDADE — gráfico concentração × tempo                        */
   /* ------------------------------------------------------------------ */
   velocidade: () => rodarStory([
@@ -5006,9 +5178,6 @@ function botaoAudioPronto(v){
   const b = $('botaoAudio'); if(b) b.classList.toggle('pronto', !!v);
 }
 
-/* Marcado no fim da pergunta das torneiras: o próximo play traz a câmera de
-   volta para o quadro antes de seguir — é lá que "Velocidade:" foi escrito. */
-let camVoltarAoQuadro = false;
 
 /* A faixa acabou? Vale para o mp3 real e para o relógio virtual. */
 function faixaTerminou(){
@@ -5043,10 +5212,6 @@ $('botaoAudio').addEventListener('click', ()=>{
        questão). Aqui o botão só toca e pausa — avançar atropelaria o fluxo. */
     if(quizAtivo) return;
     botaoAudioPronto(false);
-    if(camVoltarAoQuadro){
-      camVoltarAoQuadro = false;
-      irParaCamera(camDefinicao(), true, 1600);
-    }
     avancarFaixa();
     return;
   }
@@ -5146,6 +5311,7 @@ function animar(){
   tickQuadroSaida(dt);      // troca de bloco no quadro (roda em tempo real)
   tickQuadroAnims(dt);      // realce do item e fade da pergunta
   tickFades(dt);            // fade de objetos 3D (esvaziar/repor a bancada)
+  tickPulsos(dt);           // pulso dos rótulos A/B das torneiras
   tickCamera();             // easing da câmera
   tickOrbita(dt);           // órbita lenta
   tickMB();                 // animação da curva de Maxwell-Boltzmann
