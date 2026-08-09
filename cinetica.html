@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.14.1</div>
+  <div id="versao">v1.14.2</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.14.1';
+const VERSAO = 'v1.14.2';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3572,7 +3572,7 @@ const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, 
    câmera, em qualquer distância. Por isso o layout retrato de pintarQuadro()
    tem a coluna deslocada para a direita — sem isso a margem esquerda do texto
    nasce colada na borda da tela. */
-const CAM_QUADRO_DEF_P = { theta: 0.02, phi: 1.29, dist: 16.2, target:[1.5, -0.4, -1.6] };
+const CAM_QUADRO_DEF_P = { theta: 0.06, phi: 1.22, dist: 38.4, target:[6.6, -8.7, 0.6] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
@@ -3582,11 +3582,12 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
    as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
    Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
    um pouco acima do topo da tela. */
-/* Alvo no CENTRO do conteúdo — as duas torneiras, os béqueres, os rótulos e as
-   anotações. O alvo antigo ([-3.6,-4.9,-5.2]) ficava abaixo do chão e atrás
-   das torneiras: com a compensação de retrato antiga, a câmera estava tão
-   longe que o desvio não aparecia. Ao aproximar, ele jogava tudo para fora. */
-const CAM_TORNEIRAS = { theta: 1.48, phi: 1.31, dist: 11.5, target:[-5.4, 1.24, -1.62] };
+/* Capturada no aparelho, já com a referência nova (fator 1): estes números são
+   a distância e a mira de verdade. O alvo fica abaixo e atrás das torneiras de
+   propósito — é o que deixa a bancada entrar por baixo e o mural das fórmulas
+   ao fundo. Não "corrigir" o alvo para o centro do conteúdo: já tentei, e
+   fecha demais o plano. */
+const CAM_TORNEIRAS = { theta: 1.47, phi: 1.33, dist: 26.0, target:[-4.1, -5.0, -5.1] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  8.8, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 21, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
@@ -3706,14 +3707,40 @@ function alternarCamLivre(){
 }
 
 /* Texto pronto para colar numa constante CAM_*. */
+/* Posição de um objeto em coordenadas de TELA: -1 a +1 nos dois eixos, com
+   (0,0) no centro. É o que permite comparar o que o aparelho desenhou com o
+   que o cálculo previu. */
+function ndcDe(obj){
+  if(!obj || !camera) return '—';
+  const v = obj.getWorldPosition(new THREE.Vector3()).project(camera);
+  return '(' + v.x.toFixed(2) + ', ' + v.y.toFixed(2) + ')';
+}
+
 function textoCamera(){
   const s = camEstado;
-  return '{ theta: ' + s.theta.toFixed(2) +
-         ', phi: '   + s.phi.toFixed(2) +
-         ', dist: '  + s.dist.toFixed(1) +
-         ', target:[' + s.target.x.toFixed(1) + ',' +
-                        s.target.y.toFixed(1) + ',' +
-                        s.target.z.toFixed(1) + '] }';
+  const cam = '{ theta: ' + s.theta.toFixed(2) +
+              ', phi: '   + s.phi.toFixed(2) +
+              ', dist: '  + s.dist.toFixed(1) +
+              ', target:[' + s.target.x.toFixed(1) + ',' +
+                             s.target.y.toFixed(1) + ',' +
+                             s.target.z.toFixed(1) + '] }';
+
+  /* DIAGNÓSTICO. A constante sozinha não diz em que tela ela foi vista, e a
+     mesma constante enquadra diferente conforme o aspecto. Com estas linhas,
+     um único "copiar" já conta a tela, o fator aplicado e onde os objetos
+     realmente caíram — dá para conferir o cálculo contra o aparelho em vez de
+     deduzir por print. */
+  const l = [];
+  l.push('tela ' + window.innerWidth + 'x' + window.innerHeight +
+         '  dpr ' + (window.devicePixelRatio || 1).toFixed(2) +
+         '  aspecto ' + (camera ? camera.aspect.toFixed(3) : '—') +
+         '  fator ' + fatorRetrato().toFixed(2) +
+         '  dist efetiva ' + (s.dist * fatorRetrato()).toFixed(1));
+  if(torneiras){
+    l.push('rotulo A ' + ndcDe(torneiras.rotA) + '   rotulo B ' + ndcDe(torneiras.rotB));
+    l.push('anota A ' + ndcDe(_anotacoes.a) + '   anota B ' + ndcDe(_anotacoes.b));
+  }
+  return cam + '\n// ' + l.join('\n// ');
 }
 
 /* O HUD é estático (título + botão, definidos no HTML). Só ligamos o clique
