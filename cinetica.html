@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.14.0</div>
+  <div id="versao">v1.14.1</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.14.0';
+const VERSAO = 'v1.14.1';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3582,7 +3582,11 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
    as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
    Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
    um pouco acima do topo da tela. */
-const CAM_TORNEIRAS = { theta: 1.48, phi: 1.31, dist: 25.8, target:[-3.6, -4.9, -5.2] };
+/* Alvo no CENTRO do conteúdo — as duas torneiras, os béqueres, os rótulos e as
+   anotações. O alvo antigo ([-3.6,-4.9,-5.2]) ficava abaixo do chão e atrás
+   das torneiras: com a compensação de retrato antiga, a câmera estava tão
+   longe que o desvio não aparecia. Ao aproximar, ele jogava tudo para fora. */
+const CAM_TORNEIRAS = { theta: 1.48, phi: 1.31, dist: 11.5, target:[-5.4, 1.24, -1.62] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  8.8, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 21, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
