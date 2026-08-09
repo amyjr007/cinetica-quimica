@@ -86,11 +86,13 @@ html,body{
      inválida derruba a regra inteira, não só o número. */
   --vw:3.90px; --vh:8.44px;
 }
-/* Moldada = a janela é mais larga que um celular em pé.
-   JS escreve left/top/width/height; aqui só soltamos o inset e damos a borda
-   que separa o aparelho do fundo. */
-#app.moldada{
-  inset:auto;
+/* .moldada solta o inset para o JS mandar em left/top/width/height. Fica
+   sempre ligada — o inset:0 acima só vale no instante antes do primeiro
+   ajustarMoldura(), para a tela de carregamento não nascer sem tamanho.
+   .comBarras é separada porque a borda só existe quando sobra janela em volta;
+   numa tela que a caixa preenche ela viraria um fio de 1px na beirada. */
+#app.moldada{ inset:auto; }
+#app.comBarras{
   box-shadow:0 0 0 1px rgba(255,255,255,.07), 0 24px 80px rgba(0,0,0,.6);
 }
 /* O fundo FORA da moldura. Sem isto, sobra o branco do documento. */
@@ -952,7 +954,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.20.0</div>
+  <div id="versao">v1.21.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -1036,7 +1038,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.20.0';
+const VERSAO = 'v1.21.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2818,18 +2820,24 @@ function iniciar3D(){
    o raycast do quiz 3D leem todos daqui, então não há como um deles ficar
    medindo a janela e desalinhar dos outros.
 
-   Quando a janela já tem forma de celular em pé, a moldura ocupa tudo e não
-   há moldura nenhuma a rigor — é o caso do aparelho de verdade. Só quando a
-   janela é mais larga que LIMITE_RETRATO é que ela vira caixa centrada.
+   A MOLDURA VALE SEMPRE, e isso é o ponto. A primeira versão só moldava
+   janelas mais largas que 0.75, achando que telas em pé já eram equivalentes
+   entre si. Não são: o painel do VS Code em pé dá ~0.55 e o celular ~0.46, os
+   dois passavam em cheio, cada um com o seu aspecto, e o enquadramento
+   divergia de novo — exatamente o que a moldura existia para impedir.
 
-   LIMITE_RETRATO = 0.75 separa com folga os dois mundos: celular em pé vai de
-   ~0.45 (tela cheia) a ~0.65 (com a barra do navegador comendo altura), e
-   janela deitada ou quadrada começa perto de 1. Nada real cai no meio.
+   Agora a caixa tem SEMPRE o aspecto de referência, a maior que couber na
+   janela, e é o aspecto que deixa de ser variável: em qualquer tela a câmera
+   recebe 0.481 e o FOV dá FOV_REF cravado. O preview e o aparelho passam a
+   mostrar a mesma coisa por construção, não por coincidência de proporção.
+
+   O preço são as barras. Num celular em pé (0.46) a caixa perde ~4% de
+   altura, invisível. Num navegador com a barra de endereço aberta (~0.60) ela
+   perde largura de verdade — instalar como app (fullscreen) devolve isso.
    -------------------------------------------------------------------------- */
-/* A moldura É a tela de referência: usamos ASPECT_REF direto, DENTRO da
-   função. No topo do script não daria — ASPECT_REF é um const declarado lá na
-   seção da câmera, e lê-lo aqui em cima cairia na zona morta temporal. */
-const LIMITE_RETRATO = 0.75;
+/* A moldura É a tela de referência: usamos ASPECT_REF direto, DENTRO das
+   funções. No topo do script não daria — ASPECT_REF é um const declarado lá
+   na seção da câmera, e lê-lo aqui em cima cairia na zona morta temporal. */
 
 function telaW(){ const m = $('app'); return (m && m.clientWidth)  || window.innerWidth; }
 function telaH(){ const m = $('app'); return (m && m.clientHeight) || window.innerHeight; }
@@ -2838,21 +2846,23 @@ function ajustarMoldura(){
   const m = $('app');
   if(!m) return;
   const w = window.innerWidth, h = window.innerHeight;
-  const janelaLarga = (w / h) > LIMITE_RETRATO;
 
-  if(janelaLarga){
-    /* Caixa em pé, o mais alta que a janela permitir, centrada por `left` —
-       nunca por transform, que é do tremor (ver o bloco da moldura no CSS). */
-    const ah = h, aw = Math.round(h * ASPECT_REF);
-    m.classList.add('moldada');
-    m.style.width  = aw + 'px';   m.style.height = ah + 'px';
-    m.style.left   = Math.round((w - aw) / 2) + 'px';
-    m.style.top    = '0px';
-  } else {
-    m.classList.remove('moldada');
-    m.style.width = ''; m.style.height = '';
-    m.style.left  = ''; m.style.top    = '';
-  }
+  /* A MAIOR caixa em ASPECT_REF que cabe na janela. Primeiro tentamos usar a
+     altura inteira; se aí a caixa ficar mais larga que a janela, quem manda é
+     a largura. É o "contain" clássico, e é o que torna o aspecto uma
+     constante em vez de uma variável. */
+  let ah = h, aw = Math.round(h * ASPECT_REF);
+  if(aw > w){ aw = w; ah = Math.round(w / ASPECT_REF); }
+
+  /* Centrada por left/top em px — nunca por transform, que é do tremor
+     (ver o bloco da moldura no CSS). */
+  m.classList.add('moldada');
+  m.style.width  = aw + 'px';                       m.style.height = ah + 'px';
+  m.style.left   = Math.round((w - aw) / 2) + 'px'; m.style.top    = Math.round((h - ah) / 2) + 'px';
+
+  /* A borda só faz sentido quando SOBRA janela em volta. Numa tela que a
+     caixa preenche, viraria um fio de 1px na beirada, que lê como defeito. */
+  m.classList.toggle('comBarras', (aw < w - 1) || (ah < h - 1));
 
   /* --vw / --vh: 1% da MOLDURA em px. Todo o CSS depende disto — ver o bloco
      da moldura lá em cima. Escrito depois de fixar o tamanho, para clientWidth
@@ -2860,10 +2870,10 @@ function ajustarMoldura(){
   m.style.setProperty('--vw', (m.clientWidth  / 100) + 'px');
   m.style.setProperty('--vh', (m.clientHeight / 100) + 'px');
 
-  /* Celular deitado: a moldura ficaria com ~190px de largura. Melhor pedir
-     para girar. Num computador (janela alta) a moldura basta. */
-  const celularDeitado = janelaLarga && h < 560;
-  $('gire').classList.toggle('on', celularDeitado);
+  /* Celular deitado: a caixa é limitada pela ALTURA e fica com ~190px de
+     largura, ilegível. Melhor pedir para girar. Num computador a janela é
+     alta o bastante para a caixa sair grande, e ninguém precisa girar nada. */
+  $('gire').classList.toggle('on', w > h && h < 560);
 }
 
 function aoRedimensionar(){
@@ -2885,21 +2895,21 @@ function aoRedimensionar(){
   mostrarFormatoDaTela();
 }
 
-/* Formato da moldura, no HUD da câmera livre. Existe para responder à pergunta
-   "por que no celular está diferente do preview?" sem adivinhação: é o ASPECTO
-   que decide o FOV, e comparar os dois números lado a lado mostra na hora se
-   as duas telas estão no mesmo enquadramento. O de referência fica escrito
-   junto, para servir de régua, e a janela aparece entre parênteses quando a
-   moldura é menor que ela. */
+/* Formato no HUD da câmera livre. Existe para responder à pergunta "por que no
+   celular está diferente do preview?" sem adivinhação. Mostra as DUAS medidas
+   — janela e moldura — porque a divergência sempre morava na diferença entre
+   elas. Com a moldura valendo em toda tela, o aspecto e o fov das duas linhas
+   de baixo têm de bater entre aparelhos; se não baterem, o problema está aqui
+   e não na calibragem das câmeras. */
 function mostrarFormatoDaTela(){
   const el = $('hudTela');
   if(!el) return;
   const w = telaW(), h = telaH();
-  const moldada = $('app').classList.contains('moldada');
   el.innerHTML =
-    w + '&times;' + h + (moldada ? ' (moldura)' : '') +
+    'janela  ' + window.innerWidth + '&times;' + window.innerHeight +
+    '<br>moldura ' + w + '&times;' + h +
     '<br>aspecto ' + (w / h).toFixed(3) + ' &middot; ref ' + ASPECT_REF +
-    '<br>fov ' + fovDaTela().toFixed(1) + '&deg;';
+    '<br>fov ' + fovDaTela().toFixed(1) + '&deg; &middot; dpr ' + dprCena().toFixed(1);
 }
 
 /* -------------------- montagem / desmontagem de cenas -------------------- */
