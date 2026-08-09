@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.14.2</div>
+  <div id="versao">v1.14.3</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.14.2';
+const VERSAO = 'v1.14.3';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3193,6 +3193,14 @@ function anotarTorneira(chave, txt, cor, z, y, h){
    é um número só para as duas coisas. */
 const ANOTACAO_H = .23;
 
+/* Z das anotações, PUXADO PARA DENTRO do par (as torneiras estão em -0.3 e
+   -2.9). Centradas na própria torneira elas se estendiam para fora do
+   conjunto, e no enquadramento atual isso as cortava nas duas bordas — a
+   anotação de A chegava a ndcX -1.12. Assim cada uma continua mais perto da
+   sua torneira, mas sobra folga nas pontas e um vão de 0.26 entre elas. */
+const ANOTACAO_ZA = -0.75;
+const ANOTACAO_ZB = -2.45;
+
 /* Troca o texto de uma anotação já criada. Precisa recriar o sprite porque o
    canvas é dimensionado ao texto — "10 gotas" e "10 gotas em 2 s" não cabem
    na mesma pílula. */
@@ -3582,12 +3590,14 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
    as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
    Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
    um pouco acima do topo da tela. */
-/* Capturada no aparelho, já com a referência nova (fator 1): estes números são
-   a distância e a mira de verdade. O alvo fica abaixo e atrás das torneiras de
-   propósito — é o que deixa a bancada entrar por baixo e o mural das fórmulas
-   ao fundo. Não "corrigir" o alvo para o centro do conteúdo: já tentei, e
-   fecha demais o plano. */
-const CAM_TORNEIRAS = { theta: 1.47, phi: 1.33, dist: 26.0, target:[-4.1, -5.0, -5.1] };
+/* Calculada a partir do PRINT do aparelho, não copiada da câmera livre.
+   O valor copiado (dist 26.0, target [-4.1,-5.0,-5.1]) tinha sido pego com o
+   movimento de 3 s ainda correndo: o diagnóstico do próprio app mediu, nele,
+   os rótulos em (-0.91, 0.65) e (-0.43, 0.65) — os dois espremidos no terço
+   esquerdo, bem diferente do print. Estes números reproduzem o print:
+   rótulos em -0.72 e +0.70, na altura -0.05, contra -0.74/+0.72 e -0.05
+   medidos na imagem. */
+const CAM_TORNEIRAS = { theta: 1.47, phi: 1.33, dist:  8.5, target:[-5.4, 2.4, -1.6] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  8.8, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 21, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
@@ -4907,12 +4917,12 @@ const EVENTOS = {
        Os dois pedaços vivem na MESMA caixa — aos 12 s a pílula é reescrita
        com a frase inteira, em vez de nascer uma segunda etiqueta ao lado. */
     { t:10.4, fn:()=>{ pulsarSprite(torneiras && torneiras.rotB, 2); playSfx('pop', .35); } },
-    { t:11.2, fn:()=> anotarTorneira('b', '10 gotas', '#ff9d33', -2.9, undefined, ANOTACAO_H) },
-    { t:12.0, fn:()=> trocarAnotacao('b', '10 gotas em 2 s', '#ff9d33', -2.9, undefined, ANOTACAO_H) },
+    { t:11.2, fn:()=> anotarTorneira('b', '10 gotas', '#ff9d33', ANOTACAO_ZB, undefined, ANOTACAO_H) },
+    { t:12.0, fn:()=> trocarAnotacao('b', '10 gotas em 2 s', '#ff9d33', ANOTACAO_ZB, undefined, ANOTACAO_H) },
 
     /* Torneira A, mesma coreografia, já de uma vez. */
     { t:13.4, fn:()=>{ pulsarSprite(torneiras && torneiras.rotA, 2); playSfx('pop', .35); } },
-    { t:14.8, fn:()=> anotarTorneira('a', '2 gotas em 2 s', '#6fb7ff', -0.30, undefined, ANOTACAO_H) }
+    { t:14.8, fn:()=> anotarTorneira('a', '2 gotas em 2 s', '#6fb7ff', ANOTACAO_ZA, undefined, ANOTACAO_H) }
   ]),
 
   /* ------------------------------------------------------------------ */
