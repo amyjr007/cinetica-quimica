@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.15.0</div>
+  <div id="versao">v1.16.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.15.0';
+const VERSAO = 'v1.16.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2657,7 +2657,13 @@ function iniciar3D(){
 function aoRedimensionar(){
   const w = window.innerWidth, h = window.innerHeight;
   if(renderer){ renderer.setPixelRatio(dprCena()); renderer.setSize(w, h, false); }
-  if(camera){ camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  /* O FOV acompanha o formato da janela — ver fovDaTela(). É o que faz o
+     preview e o celular mostrarem a MESMA composição horizontal. */
+  if(camera){
+    camera.aspect = w / h;
+    camera.fov = fovDaTela();
+    camera.updateProjectionMatrix();
+  }
   const dpr = dprCena();
   cvConfete.width = w * dpr; cvConfete.height = h * dpr;
   cvConfete.style.width = w + 'px'; cvConfete.style.height = h + 'px';
@@ -3613,27 +3619,42 @@ let camTween  = null;
    Consequência: as constantes herdadas da fase "paisagem" foram multiplicadas
    por 2.1, para manterem no celular o enquadramento que já tinham.
    -------------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------
+   ENQUADRAMENTO ENTRE JANELAS DE FORMATOS DIFERENTES
+   --------------------------------------------------------------------------
+   A câmera NUNCA muda de lugar por causa da tela. Só o FOV muda.
+
+   Por que não mexer na distância: os alvos destas cenas ficam LONGE do
+   assunto (a câmera do quadro mira [6.6,-8.7,0.6] e o quadro está em
+   [0,3.4,-6.05]). Com o alvo fora do assunto, aproximar ou afastar não
+   apenas muda o tamanho — DESLOCA o assunto na tela. Foi isso que fez cada
+   tentativa de compensar por distância desenquadrar tudo de novo.
+
+   Mexendo só no FOV, a posição e a direção ficam intactas, e vale a
+   identidade que interessa:
+
+       ndcX = (v . eixoX) / (profundidade * tan(fov/2) * aspecto)
+
+   Se tan(fov/2) * aspecto for constante, ndcX é IDÊNTICO em qualquer janela.
+   Ou seja: a composição HORIZONTAL — que é a que importa aqui, com um quadro
+   de 10.5 de largura e duas torneiras lado a lado — fica exatamente igual no
+   celular, no painel do VS Code e no computador.
+
+   O que não dá para igualar é a vertical: janelas de formatos diferentes
+   mostram alturas diferentes, e isso é geometria, não ajuste.
+   -------------------------------------------------------------------------- */
 const ASPECT_REF = 0.481;          // 384x798, o aparelho de referência
+const FOV_REF    = 48;             // FOV vertical NA tela de referência
 
-/* O FOV da câmera é VERTICAL e fixo. Duas janelas à mesma distância mostram,
-   por isso, a mesma ALTURA de cena e larguras diferentes — e é a largura que
-   define o enquadramento aqui: o quadro tem 10.5 de largura, as torneiras
-   ficam lado a lado. Era essa a diferença que sobrava entre o celular e o
-   painel do VS Code (aspecto 0.77): o painel mostrava 1.6x mais largura e
-   tudo parecia afastado.
-
-   Este fator mantém a LARGURA VISÍVEL constante: janela mais gorda aproxima,
-   mais estreita afasta. No aparelho de referência ele vale 1, então as
-   constantes CAM_* continuam sendo o que se vê no celular — e o preview passa
-   a mostrar o mesmo enquadramento, o que o torna confiável para ajustar. */
-function fatorEnquadre(){
-  if(!camera) return 1;
-  return clamp(ASPECT_REF / camera.aspect, .45, 2.2);
+function fovDaTela(){
+  const a = (camera && camera.aspect) ? camera.aspect : ASPECT_REF;
+  const tan = Math.tan(FOV_REF / 2 * Math.PI / 180) * (ASPECT_REF / a);
+  return clamp(2 * Math.atan(tan) * 180 / Math.PI, 20, 70);
 }
 
 function aplicarCamera(){
   const s = camEstado;
-  const d = s.dist * fatorEnquadre();
+  const d = s.dist;             // sem compensação: a tela mexe no FOV, não aqui
   const sp = Math.sin(s.phi), cp = Math.cos(s.phi);
   camera.position.set(
     s.target.x + d * sp * Math.sin(s.theta),
@@ -3724,6 +3745,12 @@ function ndcDe(obj){
   const v = obj.getWorldPosition(new THREE.Vector3()).project(camera);
   return '(' + v.x.toFixed(2) + ', ' + v.y.toFixed(2) + ')';
 }
+/* Mesmo, para um ponto fixo do cenário (o quadro está sempre em z = -6.05). */
+function ndcPonto(x, y, z){
+  if(!camera) return '—';
+  const v = new THREE.Vector3(x, y, z).project(camera);
+  return '(' + v.x.toFixed(2) + ', ' + v.y.toFixed(2) + ')';
+}
 
 function textoCamera(){
   const s = camEstado;
@@ -3743,8 +3770,14 @@ function textoCamera(){
   l.push('tela ' + window.innerWidth + 'x' + window.innerHeight +
          '  dpr ' + (window.devicePixelRatio || 1).toFixed(2) +
          '  aspecto ' + (camera ? camera.aspect.toFixed(3) : '—') +
-         '  fator ' + fatorEnquadre().toFixed(2) +
-         '  dist efetiva ' + (s.dist * fatorEnquadre()).toFixed(1));
+         '  fov ' + (camera ? camera.fov.toFixed(1) : '—') +
+         '  (a distância NÃO muda com a tela)');
+  /* Cantos do quadro: ele está sempre no mesmo lugar do cenário, então dá
+     para medir sem depender de a cena estar montada. */
+  l.push('quadro topo ' + ndcPonto(0, 6.2, -6.05) +
+         '  base ' + ndcPonto(0, 0.6, -6.05) +
+         '  esq ' + ndcPonto(-5.25, 3.4, -6.05) +
+         '  dir ' + ndcPonto(5.25, 3.4, -6.05));
   if(torneiras){
     l.push('rotulo A ' + ndcDe(torneiras.rotA) + '   rotulo B ' + ndcDe(torneiras.rotB));
     l.push('anota A ' + ndcDe(_anotacoes.a) + '   anota B ' + ndcDe(_anotacoes.b));
@@ -3810,8 +3843,7 @@ function toast(msg, ms, selecionavel){
 const _vDir = new THREE.Vector3();
 const _vDireita = new THREE.Vector3(), _vCima = new THREE.Vector3();
 function panCamera(dxPx, dyPx){
-  const distEfetiva = camEstado.dist * fatorEnquadre();
-  const alturaVisivel = 2 * distEfetiva * Math.tan(camera.fov * Math.PI / 360);
+  const alturaVisivel = 2 * camEstado.dist * Math.tan(camera.fov * Math.PI / 360);
   const escala = alturaVisivel / Math.max(1, window.innerHeight);
 
   camera.getWorldDirection(_vDir);
