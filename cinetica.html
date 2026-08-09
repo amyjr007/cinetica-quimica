@@ -647,8 +647,8 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    3) FOLGA VERTICAL. Sobra altura em pé: a legenda desce um pouco e o painel
       de gráfico volta ao centro exato, sem risco de encostar no rodapé.
 
-   A cena 3D já se vira sozinha: fatorRetrato() afasta a câmera quando o
-   aspecto fica menor que 1.5 (ver seção 8 do JS).
+   A cena 3D não precisa de nada aqui: o retrato é a tela de REFERÊNCIA dela,
+   e as constantes CAM_* já são medidas nele (ver ASPECT_BASE na seção 8).
    ========================================================================== */
 @media (orientation: portrait){
 
@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.13.3</div>
+  <div id="versao">v1.14.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.13.3';
+const VERSAO = 'v1.14.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3544,15 +3544,15 @@ function prepararArena(op){
      theta = giro horizontal (rad)  |  phi = inclinação (0 = topo, PI = baixo)
      dist  = distância ao alvo      |  target = ponto observado
    ========================================================================== */
-const CAM_GERAL   = { theta: 0.00, phi: 1.16, dist: 11.5, target:[0, 1.4, 0] };
-const CAM_BEQUER  = { theta: 0.22, phi: 1.34, dist:  4.4, target:[-2.6, 1.1, .2] };
-const CAM_BEQUER_B= { theta:-0.22, phi: 1.34, dist:  4.4, target:[ 2.6, 1.1, .2] };
-const CAM_DUPLA   = { theta: 0.00, phi: 1.30, dist:  8.2, target:[0, 1.2, .2] };
+const CAM_GERAL   = { theta: 0.00, phi: 1.16, dist: 24.2, target:[0, 1.4, 0] };
+const CAM_BEQUER  = { theta: 0.22, phi: 1.34, dist:  9.2, target:[-2.6, 1.1, .2] };
+const CAM_BEQUER_B= { theta:-0.22, phi: 1.34, dist:  9.2, target:[ 2.6, 1.1, .2] };
+const CAM_DUPLA   = { theta: 0.00, phi: 1.30, dist:  17.2, target:[0, 1.2, .2] };
 /* A caixa da arena tem 2·ARENA_L de aresta: a câmera precisa ficar bem
    afastada, senão moléculas passam entre a câmera e a caixa. */
-const CAM_ARENA   = { theta: 0.00, phi: 1.30, dist: 10.5, target:[0, 2.45, 0] };
-const CAM_ARENA_P = { theta: 0.34, phi: 1.34, dist:  7.6, target:[0, 2.45, 0] };
-const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  8.6, target:[0, 3.0, -2.6] };
+const CAM_ARENA   = { theta: 0.00, phi: 1.30, dist: 22.1, target:[0, 2.45, 0] };
+const CAM_ARENA_P = { theta: 0.34, phi: 1.34, dist:  16, target:[0, 2.45, 0] };
+const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  18.1, target:[0, 3.0, -2.6] };
 /* Enquadramento da DEFINIÇÃO: bancada em primeiro plano e o quadro ocupando a
    metade de cima da tela — o "plano de sala de aula". Cuidado ao mexer: essa
    câmera corta a faixa superior do quadro, e o layout de pintarQuadro() já
@@ -3572,7 +3572,7 @@ const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, 
    câmera, em qualquer distância. Por isso o layout retrato de pintarQuadro()
    tem a coluna deslocada para a direita — sem isso a margem esquerda do texto
    nasce colada na borda da tela. */
-const CAM_QUADRO_DEF_P = { theta: 0.04, phi: 1.10, dist: 20.8, target:[7.0, -9.8, 1.4] };
+const CAM_QUADRO_DEF_P = { theta: 0.02, phi: 1.29, dist: 16.2, target:[1.5, -0.4, -1.6] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
@@ -3582,27 +3582,39 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
    as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
    Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
    um pouco acima do topo da tela. */
-const CAM_TORNEIRAS = { theta: 1.48, phi: 1.31, dist: 12.3, target:[-3.6, -4.9, -5.2] };
-const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  4.2, target:[0, 1.2, .1] };
-const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 10.0, target:[0, 1.0, 0] };
+const CAM_TORNEIRAS = { theta: 1.48, phi: 1.31, dist: 25.8, target:[-3.6, -4.9, -5.2] };
+const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  8.8, target:[0, 1.2, .1] };
+const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 21, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
-const CAM_PAREDE  = { theta: 1.50, phi: 1.38, dist:  4.7, target:[1.2, 3.6, -1.1] };
+const CAM_PAREDE  = { theta: 1.50, phi: 1.38, dist:  9.9, target:[1.2, 3.6, -1.1] };
 
 let camEstado = { theta:0, phi:1.16, dist:11.5, target:new THREE.Vector3(0,1.4,0) };
 let camTween  = null;
 
 /* --------------------------------------------------------------------------
-   Compensação para tela em RETRATO.
-   As constantes CAM_* foram escolhidas em paisagem. Num celular em pé a cena
-   sai cortada nas laterais, então afastamos a câmera proporcionalmente.
-   Preferimos mexer na distância e não no FOV: aumentar o FOV distorceria a
-   perspectiva da bancada.
+   TELA DE REFERÊNCIA — celular em pé (390x844, aspecto 0.46)
+   --------------------------------------------------------------------------
+   Antes a referência era PAISAGEM (ASPECT_BASE 1.5) e o retrato afastava a
+   câmera em até 2.1x. Isso fazia a MESMA constante enquadrar coisas
+   diferentes em cada janela: com dist 20.8, a câmera parava a 20.8 numa tela
+   larga, a 40.6 no painel do VS Code e a 43.7 no celular. Era por isso que o
+   preview e o celular nunca batiam, e por que um enquadramento achado no
+   computador chegava longe demais para ler no aparelho.
+
+   Agora o celular em pé é o 1.0: `dist` é a distância de verdade, e o que se
+   vê no aparelho é o que a constante diz. Janelas MAIS LARGAS não afastam
+   nada — o FOV é vertical e fixo, então elas mostram a mesma altura e apenas
+   mais cena nas laterais. Só janelas mais estreitas que a referência ainda
+   precisam recuar, para a cena não ser cortada de lado.
+
+   Consequência: as constantes herdadas da fase "paisagem" foram multiplicadas
+   por 2.1, para manterem no celular o enquadramento que já tinham.
    -------------------------------------------------------------------------- */
-const ASPECT_BASE = 1.5;
+const ASPECT_BASE = 0.46;
 function fatorRetrato(){
   if(!camera) return 1;
   const a = camera.aspect;
-  return a >= ASPECT_BASE ? 1 : clamp(ASPECT_BASE / a, 1, 2.1);
+  return a >= ASPECT_BASE ? 1 : clamp(ASPECT_BASE / a, 1, 1.6);
 }
 
 function aplicarCamera(){

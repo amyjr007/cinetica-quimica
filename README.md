@@ -10,8 +10,17 @@ Instalável como PWA (no celular: menu do navegador → *Instalar app* / *Adicio
 
 Roda **em pé e deitado** (`"orientation": "any"` no manifesto) — segue a orientação do
 aparelho. Em retrato, um bloco `@media (orientation: portrait)` no fim do CSS sobe os
-mínimos das fontes e as fontes internas dos SVG; na cena 3D, `fatorRetrato()` afasta a
-câmera para a bancada não sair cortada nas laterais.
+mínimos das fontes e as fontes internas dos SVG.
+
+**A tela de referência da cena 3D é o celular em pé, 390x844.** `ASPECT_BASE` vale 0.46 e
+`fatorRetrato()` devolve **1** nessa proporção: `dist` numa constante `CAM_*` é a distância
+de verdade. Janelas mais largas não afastam a câmera — o FOV é vertical e fixo, então elas
+mostram a mesma altura e apenas mais cena nas laterais. Só janelas mais estreitas que a
+referência ainda recuam, para a cena não ser cortada de lado.
+
+Isso importa na hora de usar a câmera livre: **o valor copiado vale em qualquer janela**.
+Antes a referência era paisagem e o retrato afastava em até 2.1x, então um enquadramento
+achado no computador chegava longe demais no aparelho.
 
 ---
 
