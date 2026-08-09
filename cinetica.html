@@ -137,8 +137,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   display:inline-block; padding:.6em 1em; border-radius:14px;
   background:var(--painel); border:1px solid var(--borda); box-shadow:var(--sombra);
   backdrop-filter:blur(9px);
-  /* Corpo de rótulo, como o "Definição:" do quadro — e não de manchete. */
-  font-size:clamp(13px,3.3vw,19px); font-weight:700; line-height:1.4; color:var(--texto);
+  font-size:clamp(17px,4.3vw,25px); font-weight:700; line-height:1.4; color:var(--texto);
 }
 
 /* ---------- Divisão matemática (dialogo1.1) ----------
@@ -864,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.13.2</div>
+  <div id="versao">v1.13.3</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -937,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.13.2';
+const VERSAO = 'v1.13.3';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3189,8 +3188,10 @@ function anotarTorneira(chave, txt, cor, z, y, h){
   _anotacoes[chave] = sp;
   return sp;
 }
-/* Altura de mundo das anotações. 0.29 = os 0.42 originais menos 30%. */
-const ANOTACAO_H = .29;
+/* Altura de mundo das anotações: 0.42 originais, -30%, e agora -20% de novo.
+   O sprite escala o canvas inteiro, então a pílula e a letra encolhem juntas —
+   é um número só para as duas coisas. */
+const ANOTACAO_H = .23;
 
 /* Troca o texto de uma anotação já criada. Precisa recriar o sprite porque o
    canvas é dimensionado ao texto — "10 gotas" e "10 gotas em 2 s" não cabem
