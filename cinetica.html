@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.17.0</div>
+  <div id="versao">v1.18.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.17.0';
+const VERSAO = 'v1.18.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -1332,12 +1332,13 @@ function retomarNarracao(){
 }
 
 /* ---- SFX ----------------------------------------------------------------
-   playSfx('applause' | 'funfare' | 'error' | 'click' | 'proxima' | 'pop' |
+   playSfx('applause' | 'funfare' | 'error' | 'proxima' | 'pop' |
            'fizz' | 'whoosh')
    Procura audios/sfx/<nome>.mp3. Se não existir, sintetiza com WebAudio,
    pro app já sair funcionando sem nenhum arquivo.
+   'click' continua sendo pedido pelos botões, mas não toca mais nada.
    ------------------------------------------------------------------------ */
-const SFX_NOMES = ['applause','funfare','error','click','proxima','pop','fizz','whoosh'];
+const SFX_NOMES = ['applause','funfare','error','proxima','pop','fizz','whoosh'];
 const sfxDisponivel = {};   // nome -> true se o mp3 existe
 const sfxAudio = {};        // nome -> <audio> já baixado, pronto para clonar
 let audioCtx = null;
@@ -1353,6 +1354,14 @@ function ctx(){
 
 function playSfx(nome, vol){
   vol = (vol === undefined) ? .7 : vol;
+  /* O 'click' de botão era um bip eletrônico de 880 Hz que destoava do resto
+     do áudio (narração e efeitos de laboratório). Silenciado num ponto só, em
+     vez de caçar as chamadas espalhadas pela interface — os botões continuam
+     pedindo o efeito, ele é que não existe mais.
+     Mas o ctx() FICA: era o clique que destravava o WebAudio dentro do gesto
+     do usuário. Sem ele, o primeiro efeito disparado por um cue de tempo
+     (sem toque) pegaria o contexto suspenso e sairia mudo. */
+  if(nome === 'click'){ ctx(); return; }
   if(sfxDisponivel[nome]){
     /* cloneNode do elemento JÁ BAIXADO em sondarSfx(): toca na hora, sem
        esperar a rede. E a cópia permite dois disparos sobrepostos — no
@@ -1407,7 +1416,6 @@ function sintetizarSfx(nome, vol){
       tom(300, .30, 'sawtooth', .22, 0,   150);
       tom(190, .42, 'square',   .16, .13,  90);
       break;
-    case 'click':   tom(880, .06, 'square', .14); break;
     case 'pop':     tom(420, .12, 'sine', .22, 0, 900); break;
     case 'proxima': tom(560, .16, 'triangle', .18, 0, 1150); ruido(.18,.10,3000,.02); break;
     case 'whoosh':  ruido(.42, .20, 700); break;
@@ -1685,10 +1693,19 @@ function contorno(mesh, esp){
   mesh.add(m);
   return mesh;
 }
+/* VIDRO. Era Phong com um specular branco: um ponto de brilho fixo e nada
+   mais, o que lia como plástico translúcido. Vidro não se reconhece pelo
+   brilho, se reconhece pelo que REFLETE — por isso Standard com o envMap do
+   laboratório (o mesmo cubo PMREM que os metais usam) e roughness quase zero,
+   que devolve a reflexão nítida do teto e das paredes na curva do copo.
+   opacity subiu de .20 para .26 porque a reflexão também é multiplicada pelo
+   alfa na hora de compor: a .20 ela quase não aparecia. */
 function vidro(cor){
-  return new THREE.MeshPhongMaterial({
-    color: cor || CORES.vidro, transparent:true, opacity:.20,
-    shininess:110, specular:0xffffff, side:THREE.DoubleSide, depthWrite:false
+  return new THREE.MeshStandardMaterial({
+    color: cor || CORES.vidro, transparent:true, opacity:.26,
+    metalness:0, roughness:.06,
+    envMap: ambienteReflexo(), envMapIntensity:1.7,
+    side:THREE.DoubleSide, depthWrite:false
   });
 }
 
@@ -1995,7 +2012,12 @@ function texturaParedeSlide(){
   benzeno(     .87, .15, 40, .050);
   oxigenio(    .14, .46, 16, .040);
   metano(      .08, .65, 21, .042);
-  agua(        .53, .67, 20, .046);
+  /* A água é a estrutura mais central da parede e por isso a que mais saltava:
+     em atomo() o alpha vira contorno a 1.7x e a letra a até 2.4x, então .046
+     ali dentro rendia um 'O' a ~.11 — o dobro das fórmulas em volta. Em .014
+     ela fica no limite do perceptível, que é o pedido: presença, não desenho.
+     Mexa aqui, não em atomo(), para não apagar as outras moléculas junto. */
+  agua(        .53, .67, 20, .014);
   amonia(      .91, .69, 20, .042);
 
   /* ---- 4) EQUAÇÕES E LEIS ---- */
@@ -2074,6 +2096,17 @@ const QUADRO_W = 1920, QUADRO_H = 1024;      // 1.875 = 10.5/5.6, o mesmo do pla
 /* Estado do que está escrito. `revelado` = nº de caracteres já "digitados". */
 const QUADRO_TXT = {
   titulo:    'Cinética Química',
+
+  /* Assinatura, logo abaixo do título, em branco. O '\n' é quebra obrigatória
+     (ver quebrarLinhas), mas aqui as linhas são pintadas uma a uma, centradas
+     no mesmo eixo do título: título + créditos leem como um bloco só.
+     Só aparecem com o QUADRO LIMPO — ver a seção 3.2 de pintarQuadro(). */
+  creditos:  'Aplicativo desenvolvido pelo\nprof. Amauri Junior',
+
+  /* Ano, no canto de baixo do quadro. Fica sempre — é o único texto que não
+     divide espaço com nada. */
+  ano:       '2026',
+
   rotulo:    '',
   definicao: '',
   /* Rótulo e definição são digitados SEPARADAMENTE (em tempos diferentes do
@@ -2122,7 +2155,12 @@ const LAYOUT_QUADRO = {
   paisagem: { colEsq:.095, colDir:.905, tituloU:.500,
               tamTitulo:104, tamRotulo:68, tamDef:68,
               tituloV:.255, fileteV:.305, rotuloV:.445, defV:.575, linha:92,
-              perguntaV:.900 },
+              perguntaV:.900,
+              /* Créditos: entre o filete e o rótulo. Nesta faixa da textura é
+                 onde depois vai "Definição:", e é por isso que os créditos só
+                 existem com o quadro limpo. */
+              tamCredito:54, creditoV:.368, creditoLinha:62,
+              tamAno:44, anoV:.898 },
 
   /* RETRATO — calibrado para a CAM_QUADRO_DEF_P. ESTES SÃO OS KNOBS:
        colEsq/colDir  movem e estreitam a coluna de texto
@@ -2158,7 +2196,13 @@ const LAYOUT_QUADRO = {
   retrato:  { colEsq:.280, colDir:.975, tituloU:.4395,
               tamTitulo:66, tamRotulo:48, tamDef:52,
               tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:90,
-              perguntaV:.791 }
+              perguntaV:.791,
+              /* Créditos centrados em tituloU, não no centro da coluna: eles
+                 pertencem ao título. Com 40px a linha mais larga ("Aplicativo
+                 desenvolvido pelo") mede quase o mesmo que o título — que já
+                 se sabe enquadrado pela CAM_QUADRO_DEF_P. */
+              tamCredito:40, creditoV:.258, creditoLinha:46,
+              tamAno:34, anoV:.880 }
 };
 function ehRetrato(){ return window.innerHeight > window.innerWidth; }
 function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
@@ -2274,6 +2318,25 @@ function pintarQuadro(){
     c.fillStyle = gl; c.fillRect(ESQ, H * L.fileteV, LARG, 3);
   }
 
+  /* ---- 3.2) créditos, logo abaixo do título ----------------------------
+     Só com o QUADRO LIMPO — que é o estado da capa. A faixa da textura entre
+     o filete e a lista é a mesma que a aula usa para "Definição:", então os
+     créditos cedem o lugar sozinhos assim que a narração escreve alguma
+     coisa. Nenhum cue precisa apagá-los, e eles voltam se o quadro for limpo
+     de novo. */
+  const quadroLimpo = !QUADRO_TXT.rotulo && !QUADRO_TXT.definicao &&
+                      !QUADRO_TXT.saindoRotulo && !QUADRO_TXT.saindoDef;
+  if(QUADRO_TXT.creditos && quadroLimpo){
+    c.font = '600 ' + L.tamCredito + 'px ' + FONTE;
+    c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    c.fillStyle = '#ffffff';
+    let yC = H * L.creditoV;
+    QUADRO_TXT.creditos.split('\n').forEach((linha)=>{
+      c.fillText(linha, W * L.tituloU, yC);   // mesmo eixo do título
+      yC += L.creditoLinha;
+    });
+  }
+
   c.textAlign = 'left';
 
   /* ---- 3.5) bloco que está saindo, deslizando para a esquerda ---- */
@@ -2366,6 +2429,20 @@ function pintarQuadro(){
       c.fillStyle = '#ff3b30';
       c.fillRect(ESQ + c.measureText(visP).width + 6, yP - L.tamRotulo * .74, 5, L.tamRotulo * .9);
     }
+    c.restore();
+  }
+
+  /* ---- 7) ano, no canto de baixo à direita ----------------------------
+     Alinhado à direita em .930, encostado por dentro do fio da borda (.965).
+     Fica embaixo de tudo e à direita de tudo — a pergunta é curta e alinhada
+     à esquerda, então nunca se encontram. Discreto de propósito: é uma data
+     no canto do quadro, não um elemento da aula. */
+  if(QUADRO_TXT.ano){
+    c.save();
+    c.font = '600 ' + L.tamAno + 'px ' + FONTE;
+    c.textAlign = 'right'; c.textBaseline = 'alphabetic';
+    c.fillStyle = 'rgba(246,236,233,.45)';
+    c.fillText(QUADRO_TXT.ano, W * .930, H * L.anoV);
     c.restore();
   }
 
@@ -2805,53 +2882,188 @@ function criarSala(){
   return g;
 }
 
-/* ---- Béquer com líquido, comprimido e bolhas.
-   'taxa' controla quantas bolhas nascem por segundo = VELOCIDADE visual. ---- */
+/* --------------------------------------------------------------------------
+   GRADUAÇÃO DO BÉQUER — a escala impressa no vidro
+   --------------------------------------------------------------------------
+   É o detalhe que faz um cilindro de vidro virar VIDRARIA DE LABORATÓRIO: o
+   olho reconhece o objeto pela escala antes de reconhecer pela forma.
+
+   A textura envolve o cilindro inteiro, mas os traços são desenhados só numa
+   fatia estreita de u — béquer de verdade tem a escala em UM lado, não em
+   volta. O resto do canvas fica com alfa zero e some.
+
+   flipY: a textura nasce com flipY = true, então o topo do canvas cai no TOPO
+   do cilindro. Por isso os traços são desenhados de cima para baixo.
+   -------------------------------------------------------------------------- */
+let _texMarcasBequer = null;
+function texturaMarcasBequer(){
+  if(_texMarcasBequer) return _texMarcasBequer;
+  const N = 512;
+  const cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const c = cv.getContext('2d');
+
+  /* Faixa em u onde a escala vive: 3% a 19% da volta. */
+  const U0 = N * .030, U1 = N * .190;
+  const traco = (v, frac, esp, alfa) => {
+    c.strokeStyle = 'rgba(255,255,255,' + alfa + ')';
+    c.lineWidth = esp;
+    c.beginPath();
+    c.moveTo(U0, N * v);
+    c.lineTo(U0 + (U1 - U0) * frac, N * v);
+    c.stroke();
+  };
+  /* Cinco marcas "cheias" com duas menores entre cada par — o ritmo de uma
+     escala graduada. v .22 é a marca do topo; .82 a de baixo. */
+  for(let i = 0; i < 5; i++){
+    const v = .22 + i * .15;
+    traco(v, 1.0, 5, .60);
+    if(i < 4){
+      traco(v + .05, .45, 3.5, .34);
+      traco(v + .10, .45, 3.5, .34);
+    }
+  }
+
+  _texMarcasBequer = new THREE.CanvasTexture(cv);
+  TEXTURAS_COMPARTILHADAS.add(_texMarcasBequer);
+  _texMarcasBequer.anisotropy = 8;
+  return _texMarcasBequer;
+}
+
+/* --------------------------------------------------------------------------
+   BÉQUER COM LÍQUIDO, PASTILHA E EFERVESCÊNCIA
+   --------------------------------------------------------------------------
+   'taxa' é o knob de VELOCIDADE: quantas bolhas nascem por segundo. Toda a
+   aula se apoia em ler a diferença entre dois béqueres, então taxa tem de se
+   traduzir em algo visível — aqui vira densidade E velocidade de subida.
+
+   O QUE FAZIA A EFERVESCÊNCIA PARECER FALSA (e o que mudou)
+
+   · As bolhas nasciam espalhadas por TODO o fundo, uniformemente sorteadas.
+     Efervescência de verdade sai de SÍTIOS DE NUCLEAÇÃO: uns poucos pontos
+     fixos na pastilha, cada um soltando um fio contínuo de bolhas. É o fio
+     que o olho reconhece — sem ele, o que se vê é chuva ao contrário.
+   · Todas subiam em linha reta e em velocidade constante. Bolha real acelera
+     (o empuxo é constante, o arrasto não acompanha) e sobe em espiral, com
+     a espiral abrindo à medida que ganha velocidade.
+   · Todas tinham o mesmo tamanho médio e não mudavam. Bolha real CRESCE ao
+     subir: a pressão da coluna de líquido cai e o gás se expande.
+   · Sumiam de estalo na superfície. Bolha real chega, fica boiando um
+     instante achatada — é isso que forma o colarinho de espuma — e só então
+     estoura.
+   · MeshBasicMaterial não recebe luz nenhuma: cada bolha era um disco branco
+     chapado, todos idênticos. Com Phong + specular, cada uma ganha seu ponto
+     de brilho e o volume aparece.
+
+   CUSTO: cada bolha viva é uma draw call transparente, e são DOIS béqueres em
+   cena. Por isso a densidade tem teto. A conta: nascimentos/s =
+   min(taxa, 1.4) * 26 e vida de ~1.3 a 1.9 s, o que dá ~15 bolhas vivas na
+   capa, ~23 no béquer rápido e ~48 no auge do aquecimento. MAXB (90) é a
+   trava dura: nascerBolha() desiste em silêncio com o pool cheio.
+   -------------------------------------------------------------------------- */
 function criarBequer(op){
   op = Object.assign({ x:0, z:0, r:.75, h:1.7, corLiq:CORES.frio, taxa:.5, po:false }, op);
   const g = new THREE.Group();
   g.position.set(op.x, 0, op.z);
 
-  /* copo (vidro) */
+  /* ---- vidro ----------------------------------------------------------
+     Um material só para copo e fundo: são a mesma peça de vidro, e compartilhar
+     poupa uma passada do fade e um estado de render. */
+  const matVidro = vidro();
+
   const copo = new THREE.Mesh(
-    new THREE.CylinderGeometry(op.r, op.r * .93, op.h, 26, 1, true), vidro());
+    new THREE.CylinderGeometry(op.r, op.r * .93, op.h, 30, 1, true), matVidro);
   copo.position.y = op.h / 2 + .06; g.add(copo);
 
-  const fundo = new THREE.Mesh(new THREE.CylinderGeometry(op.r*.93, op.r*.93, .08, 26), vidro());
+  const fundo = new THREE.Mesh(new THREE.CylinderGeometry(op.r*.93, op.r*.93, .08, 30), matVidro);
   fundo.position.y = .1; g.add(fundo);
+
+  /* Escala graduada, numa casca fininha por fora do copo. rotation.y traz a
+     faixa de traços para o lado de quem olha: as câmeras de béquer (CAM_BEQUER
+     e CAM_BEQUER_B) olham de frente e um pouco de lado. */
+  const marcas = new THREE.Mesh(
+    new THREE.CylinderGeometry(op.r*1.004, op.r*.934, op.h, 30, 1, true),
+    /* FrontSide: com DoubleSide a face de dentro da mesma fatia é desenhada
+       por cima da de fora e os traços saem com o dobro da força. */
+    new THREE.MeshBasicMaterial({ map:texturaMarcasBequer(), transparent:true,
+                                  opacity:.55, depthWrite:false, side:THREE.FrontSide }));
+  marcas.position.y = op.h / 2 + .06;
+  marcas.rotation.y = -.62;
+  g.add(marcas);
 
   const aro = new THREE.Mesh(new THREE.TorusGeometry(op.r, .045, 10, 34),
     metal({ cor:0xd6dde3, rugosidade:.22, repete:3 }));
   aro.rotation.x = Math.PI/2; aro.position.y = op.h + .06; g.add(aro);
 
-  /* líquido */
+  /* ---- líquido --------------------------------------------------------
+     Três peças, porque água é três coisas diferentes para o olho: o VOLUME
+     (corpo translúcido colorido), a SUPERFÍCIE (um espelho quase horizontal,
+     que é onde a luz da sala aparece) e o MENISCO (a curva que o líquido faz
+     ao subir pela parede do copo). O corpo sozinho, com a tampa do cilindro
+     fazendo as vezes de superfície, lia como um bloco de gelatina. */
   const alturaLiq = op.h * .68;
+  const Y_SUP = alturaLiq + .12;          // altura da superfície, em coords do grupo
+
   const liq = new THREE.Mesh(
-    new THREE.CylinderGeometry(op.r*.9, op.r*.87, alturaLiq, 26),
+    new THREE.CylinderGeometry(op.r*.9, op.r*.87, alturaLiq, 30),
     toon(op.corLiq, { transparent:true, opacity:.72 }));
   liq.position.y = alturaLiq/2 + .12; g.add(liq);
 
-  /* comprimido efervescente: inteiro (disco) ou em pó (grãozinhos) */
+  /* A superfície é mais clara que o volume: é a mesma cor lavada pela luz
+     que ela reflete. Phong (e não toon) de propósito — aqui o que interessa
+     é o brilho especular contínuo, que o degrau do toon mataria. */
+  const corSup = new THREE.Color(op.corLiq).lerp(new THREE.Color(0xffffff), .34);
+  const superficie = new THREE.Mesh(
+    new THREE.CircleGeometry(op.r*.9, 30),
+    new THREE.MeshPhongMaterial({ color:corSup, transparent:true, opacity:.62,
+                                  shininess:110, specular:0xffffff,
+                                  side:THREE.DoubleSide, depthWrite:false }));
+  superficie.rotation.x = -Math.PI/2;
+  superficie.position.y = Y_SUP + .004;
+  g.add(superficie);
+
+  const menisco = new THREE.Mesh(
+    new THREE.TorusGeometry(op.r*.893, .020, 8, 34),
+    new THREE.MeshPhongMaterial({ color:0xffffff, transparent:true, opacity:.26,
+                                  shininess:150, specular:0xffffff, depthWrite:false }));
+  menisco.rotation.x = Math.PI/2;
+  menisco.position.y = Y_SUP + .006;
+  g.add(menisco);
+
+  /* ---- pastilha efervescente: inteira (disco) ou moída (grãozinhos) ----
+     Laranja-claro, de pastilha efervescente de verdade. Fosca: é comprimido
+     prensado, não bala — por isso toon puro, sem specular. */
+  const COR_PASTILHA = 0xf2b06a;
+  const R_PASTILHA   = .34;
   const compr = new THREE.Group(); compr.position.y = .32; g.add(compr);
   function montarComprimido(emPo){
     while(compr.children.length) compr.remove(compr.children[0]);
     if(emPo){
       for(let i = 0; i < 26; i++){
-        const gr = new THREE.Mesh(new THREE.IcosahedronGeometry(.055, 0), toon(0xf3f7ee));
+        const gr = new THREE.Mesh(new THREE.IcosahedronGeometry(.055, 0), toon(COR_PASTILHA));
         const a = Math.random() * Math.PI * 2, rr = Math.random() * op.r * .72;
         gr.position.set(Math.cos(a)*rr, Math.random()*.14, Math.sin(a)*rr);
         compr.add(gr);
       }
     } else {
-      const d = new THREE.Mesh(new THREE.CylinderGeometry(.34, .34, .13, 22), toon(0xf3f7ee));
+      const d = new THREE.Mesh(new THREE.CylinderGeometry(R_PASTILHA, R_PASTILHA, .13, 22),
+                               toon(COR_PASTILHA));
       compr.add(d);
     }
   }
   montarComprimido(op.po);
 
-  /* pool de bolhas */
-  const geoB = new THREE.SphereGeometry(.055, 8, 6);
-  const matB = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:.85 });
+  /* ---- pool de bolhas ---- */
+  const geoB = new THREE.SphereGeometry(.055, 7, 5);
+  /* Phong com specular alto e opacidade baixa: uma bolha de gás na água é
+     quase invisível no meio e brilhante na borda. depthWrite desligado para
+     bolhas sobrepostas se somarem em vez de disputarem o z-buffer.
+     Sem envMap de propósito: o cubo do laboratório é PMREM (CubeUV), que só
+     Standard sabe ler, e Standard em 220 esferinhas transparentes é caro para
+     o que renderiam — o specular sozinho já dá o ponto de brilho. */
+  const matB = new THREE.MeshPhongMaterial({
+    color:0xffffff, transparent:true, opacity:.44,
+    shininess:130, specular:0xffffff, depthWrite:false
+  });
   const MAXB = 90, bolhas = [];
   for(let i = 0; i < MAXB; i++){
     const b = new THREE.Mesh(geoB, matB);
@@ -2860,44 +3072,141 @@ function criarBequer(op){
   }
 
   const est = { taxa: op.taxa, acumulador: 0, alturaLiq, r: op.r, po: op.po };
+  let tempo = 0;                          // relógio próprio: pausa junto com a cena
+
+  /* ---- sítios de nucleação ----
+     Poucos e FIXOS: é o que transforma bolhas soltas em fios de bolhas. Com
+     a pastilha inteira eles se apertam no disco; moída, espalham pelo fundo
+     inteiro — que é exatamente o que a aula de superfície de contato quer
+     mostrar. Resorteados quando setPo() troca o estado da pastilha. */
+  const N_SITIOS = 7;
+  const sitios = [];
+  function sortearSitios(){
+    sitios.length = 0;
+    const raio = est.po ? op.r * .74 : R_PASTILHA * .92;
+    for(let i = 0; i < N_SITIOS; i++){
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(Math.random()) * raio;   // sqrt = uniforme na ÁREA
+      sitios.push({ x:Math.cos(a)*rr, z:Math.sin(a)*rr, peso:.35 + Math.random() });
+    }
+  }
+  sortearSitios();
+
+  function sortearSitio(){
+    let total = 0;
+    for(let i = 0; i < sitios.length; i++) total += sitios[i].peso;
+    let alvo = Math.random() * total;
+    for(let i = 0; i < sitios.length; i++){
+      alvo -= sitios[i].peso;
+      if(alvo <= 0) return sitios[i];
+    }
+    return sitios[0];
+  }
 
   function nascerBolha(){
     for(let i = 0; i < MAXB; i++){
-      const b = bolhas[i];
-      if(b.userData.viva) continue;
-      const a = Math.random()*Math.PI*2, rr = Math.random()*est.r*.72;
-      b.position.set(Math.cos(a)*rr, .3, Math.sin(a)*rr);
-      const e = .5 + Math.random()*1.1;
-      b.scale.setScalar(e);
-      b.userData.viva = true;
-      b.userData.vy = .55 + Math.random()*.8;
-      b.userData.fase = Math.random()*6.28;
-      b.visible = true;
+      const b = bolhas[i], u = b.userData;
+      if(u.viva) continue;
+      const s = sortearSitio();
+      /* Jitter pequeno: o fio treme, mas continua sendo um fio. */
+      u.sx = s.x + (Math.random()-.5) * .045;
+      u.sz = s.z + (Math.random()-.5) * .045;
+      /* pow(rand, 2.2) = muitas pequenas, poucas grandes. Distribuição
+         uniforme dava um enxame de bolhas todas do mesmo tamanho. */
+      u.r0 = .50 + Math.pow(Math.random(), 2.2) * 1.45;
+      u.vy0 = .40 + Math.random() * .34 + u.r0 * .10;   // bolha maior sobe mais
+      u.fase = Math.random() * 6.283;
+      u.omega = (5.6 - u.r0 * 1.3) + Math.random() * 2;  // pequena treme mais
+      u.balanco = .010 + Math.random() * .028;
+      u.estado = 0;      // 0 subindo · 1 boiando (espuma) · 2 estourando
+      u.t = 0;
+      u.vidaSup = .18 + Math.random() * .42;
+      b.position.set(u.sx, .34 + Math.random() * .04, u.sz);
+      b.scale.setScalar(.001);
+      u.viva = true; b.visible = true;
       return;
     }
   }
+
   function atualizar(dt){
-    est.acumulador += est.taxa * dt * 9;
+    tempo += dt;
+
+    /* Teto em 1.4 na DENSIDADE: acima disso o aquecimento continua acelerando
+       a subida (rapidez, logo abaixo, vai até taxa 3), mas não adianta
+       empilhar mais bolhas. Sem o teto, aquecerBancada() levaria os dois
+       béqueres à mesma mancha branca saturada, e a comparação — que é o
+       assunto da aula — desapareceria justo no clímax. */
+    est.acumulador += Math.min(est.taxa, 1.4) * dt * 26;
     while(est.acumulador >= 1){ est.acumulador -= 1; nascerBolha(); }
+
+    const rapidez = 1 + Math.min(est.taxa, 3) * .30;
+    const rMax = op.r * .86;
+
     for(let i = 0; i < MAXB; i++){
-      const b = bolhas[i];
-      if(!b.userData.viva) continue;
-      b.position.y += b.userData.vy * dt * (1 + est.taxa*.22);
-      b.position.x += Math.sin(performance.now()*.004 + b.userData.fase) * dt * .12;
-      if(b.position.y > alturaLiq + .1){ b.userData.viva = false; b.visible = false; }
+      const b = bolhas[i], u = b.userData;
+      if(!u.viva) continue;
+      u.t += dt;
+
+      if(u.estado === 0){
+        /* h = quanto da coluna já subiu, 0 no fundo e 1 na superfície. */
+        const h = clamp((b.position.y - .34) / (Y_SUP - .34), 0, 1);
+        /* acelera com a altura; o gás expande e a bolha cresce */
+        b.position.y += u.vy0 * (.55 + .75 * h) * rapidez * dt;
+        const cresce = 1 + .55 * h;
+        const nasce  = clamp(u.t / .10, 0, 1);      // não surge do nada
+        const s = u.r0 * cresce * nasce;
+        b.scale.set(s, s, s);
+        /* espiral que abre conforme sobe */
+        const ang = u.fase + tempo * u.omega;
+        const raio = u.balanco * (.30 + h);
+        b.position.x = u.sx + Math.cos(ang) * raio;
+        b.position.z = u.sz + Math.sin(ang) * raio;
+
+        if(b.position.y >= Y_SUP){ u.estado = 1; u.t = 0; b.position.y = Y_SUP; }
+
+      } else if(u.estado === 1){
+        /* Boiando na superfície, achatada pela tensão superficial e
+           empurrada para a borda. Enquanto a taxa é alta, chegam mais do que
+           estouram e o colarinho de espuma se forma sozinho. */
+        const s = u.r0 * 1.55;
+        b.scale.set(s, s * .55, s);
+        const d = Math.hypot(b.position.x, b.position.z) || 1;
+        if(d < rMax){
+          b.position.x += b.position.x / d * dt * .20;
+          b.position.z += b.position.z / d * dt * .20;
+        }
+        if(u.t >= u.vidaSup){ u.estado = 2; u.t = 0; }
+
+      } else {
+        /* Estouro: some em 0.1 s abrindo um tico, em vez de piscar. */
+        const k = 1 - u.t / .10;
+        if(k <= 0){ u.viva = false; b.visible = false; continue; }
+        const s = u.r0 * 1.55 * (1 + (1-k) * .5) * k;
+        b.scale.set(s, s * .55, s);
+      }
     }
-    /* leve balanço do líquido quando está rápido */
-    liq.scale.x = liq.scale.z = 1 + Math.sin(performance.now()*.006) * .006 * est.taxa;
+
+    /* Ondulação da superfície: proporcional à efervescência, e some quando
+       o líquido está parado. Duas senoides de período diferente para não
+       virar um pulso metronômico. */
+    const agita = Math.min(est.taxa, 1.6);
+    const onda = (Math.sin(tempo * 3.1) * .006 + Math.sin(tempo * 5.3 + 1.7) * .0035) * agita;
+    superficie.position.y = Y_SUP + .004 + onda;
+    menisco.position.y    = Y_SUP + .006 + onda * .6;
+    liq.scale.x = liq.scale.z = 1 + Math.sin(tempo * 2.4) * .004 * agita;
   }
 
   return {
     grupo:g, estado:est, atualizar,
     setTaxa(v){ est.taxa = v; },
-    setPo(v){ est.po = v; montarComprimido(v); },
-    setCorLiquido(c){ liq.material.color.setHex(c); },
+    setPo(v){ est.po = v; montarComprimido(v); sortearSitios(); },
+    setCorLiquido(c){
+      liq.material.color.setHex(c);
+      superficie.material.color.copy(new THREE.Color(c).lerp(new THREE.Color(0xffffff), .34));
+    },
     posicao(){ return new THREE.Vector3(op.x, op.h*.6, op.z); },
     /* usado no quiz 3D: alvo clicável */
-    alvos: [copo, liq, fundo]
+    alvos: [copo, liq, fundo, marcas, superficie]
   };
 }
 
@@ -3080,6 +3389,46 @@ function criarTorneira(op){
     toon(op.corGota, { transparent:true, opacity:.72 }));
   liquido.position.set(0, .21, zb); g.add(liquido);
 
+  /* Superfície da água, pelo mesmo motivo do béquer da bancada: a tampa do
+     cilindro em toon é um disco chapado, e é justamente a superfície que
+     conta que ali dentro tem líquido. */
+  const Y_SUP_T = .36;                       // topo do cilindro: .21 + .30/2
+  const supT = new THREE.Mesh(
+    new THREE.CircleGeometry(.30, 24),
+    new THREE.MeshPhongMaterial({
+      color: new THREE.Color(op.corGota).lerp(new THREE.Color(0xffffff), .34),
+      transparent:true, opacity:.62, shininess:110, specular:0xffffff,
+      side:THREE.DoubleSide, depthWrite:false }));
+  supT.rotation.x = -Math.PI/2;
+  supT.position.set(0, Y_SUP_T + .004, zb);
+  g.add(supT);
+
+  /* --- ondas de impacto ------------------------------------------------
+     A gota simplesmente sumia ao tocar a água. O que faz a queda parecer
+     queda é o que acontece DEPOIS dela: um anel que abre e some. Pool de 5
+     porque mesmo a torneira rápida (5 gotas/s, onda de 0.55 s) nunca tem
+     mais que três vivas ao mesmo tempo. */
+  const MAXO = 5, ondas = [];
+  for(let i = 0; i < MAXO; i++){
+    const o = new THREE.Mesh(
+      new THREE.RingGeometry(.055, .085, 20),
+      new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0,
+                                    side:THREE.DoubleSide, depthWrite:false }));
+    o.rotation.x = -Math.PI/2;
+    o.position.set(0, Y_SUP_T + .008, zb);
+    o.visible = false; o.userData.t = -1;      // t < 0 = livre no pool
+    g.add(o); ondas.push(o);
+  }
+  function bater(){
+    for(let i = 0; i < MAXO; i++){
+      if(ondas[i].userData.t >= 0) continue;
+      ondas[i].userData.t = 0;
+      ondas[i].scale.setScalar(.6);
+      ondas[i].visible = true;
+      return;
+    }
+  }
+
   /* --- gotas: pool fixo, recicladas ao bater no líquido --- */
   const Y_BICO = 1.19, Y_AGUA = .38;
   const geoG = new THREE.SphereGeometry(.05, 10, 8);
@@ -3112,7 +3461,22 @@ function criarTorneira(op){
       if(!m.userData.viva) continue;
       m.userData.vy -= 7.2 * dt;                       // gravidade "de cena"
       m.position.y += m.userData.vy * dt;
-      if(m.position.y <= Y_AGUA){ m.userData.viva = false; m.visible = false; }
+      if(m.position.y <= Y_AGUA){
+        m.userData.viva = false; m.visible = false;
+        bater();
+      }
+    }
+    /* Anéis de impacto: abrem até a borda do copo e somem em quadrática —
+       rápido no começo e devagar no fim, que é como uma onda perde energia. */
+    for(let i = 0; i < MAXO; i++){
+      const o = ondas[i];
+      if(o.userData.t < 0) continue;
+      o.userData.t += dt;
+      const p = o.userData.t / .55;
+      if(p >= 1){ o.userData.t = -1; o.visible = false; o.material.opacity = 0; continue; }
+      const s = .6 + p * 3.0;                          // .085 * 3.6 = .30 = raio do copo
+      o.scale.set(s, s, s);
+      o.material.opacity = .55 * (1 - p) * (1 - p);
     }
   }
 
@@ -3663,7 +4027,7 @@ function fovDaTela(){
 
 function aplicarCamera(){
   const s = camEstado;
-  const d = s.dist;             // sem compensação: a tela mexe no FOV, não aqui
+  const d = s.dist + respiroDelta();   // a tela mexe no FOV, não aqui; o respiro da capa mexe
   const sp = Math.sin(s.phi), cp = Math.cos(s.phi);
   camera.position.set(
     s.target.x + d * sp * Math.sin(s.theta),
@@ -3675,6 +4039,8 @@ function aplicarCamera(){
 
 function irParaCamera(pos, suave, durMs){
   suave = (suave === undefined) ? true : suave;
+  /* Qualquer câmera pedida pela coreografia encerra o respiro da capa. */
+  respiroDesligar();
   const alvo = {
     theta: pos.theta, phi: clamp(pos.phi, .08, Math.PI - .08), dist: pos.dist,
     target: new THREE.Vector3().fromArray(pos.target || [0,1,0])
@@ -3716,6 +4082,55 @@ function tickOrbita(dt){
   camEstado.theta += orbitaSuave * dt;
 }
 
+/* --------------------------------------------------------------------------
+   RESPIRO DA CAPA — o movimento da tela de abertura
+   --------------------------------------------------------------------------
+   A capa NÃO gira. Antes, orbitaSuave girava theta sem parar e, se ninguém
+   tocasse em nada, a câmera dava a volta completa na sala e acabava olhando
+   para a parede de trás — a abertura virava um giro de 360°.
+
+   No lugar disso, a câmera fica parada de frente para o QUADRO, atrás da
+   bancada (CAM_GERAL, theta 0), e só respira na profundidade: aproxima-se
+   lentamente do quadro e, chegando ao ponto mais perto, volta. Direção e
+   alvo nunca mudam, então o enquadramento da capa é sempre o mesmo.
+
+   A curva é (1 - cos)/2: vale 0 no início, 1 na metade do período e 0 de
+   novo no fim, com velocidade ZERO nos três pontos. Não existe o "solavanco"
+   de quando o movimento inverte — a ida vira volta sem que se perceba.
+
+   AMP é a aproximação total em unidades de cena: ~5% de dist, uns 1.3 de
+   24.2. PERIODO é a ida e a volta inteiras. Nesse ritmo a câmera anda meio
+   por cento da distância por segundo: dá vida, mas não chama atenção.
+   -------------------------------------------------------------------------- */
+const RESPIRO_AMP     = 1.3;    // o quanto chega a se aproximar
+const RESPIRO_PERIODO = 30;     // segundos de ida + volta
+
+let respiroCam = null;          // { amp, periodo, t } enquanto a capa está no ar
+
+function respiroLigar(amp, periodo){
+  respiroCam = { amp: amp, periodo: periodo, t: 0 };
+}
+
+/* Quanto o respiro está tirando da distância neste frame (sempre <= 0). */
+function respiroDelta(){
+  if(!respiroCam) return 0;
+  const f = .5 - .5 * Math.cos(2 * Math.PI * respiroCam.t / respiroCam.periodo);
+  return -respiroCam.amp * f;
+}
+
+/* Encerra o respiro SEM SALTO: o que ele já tinha aproximado vira distância
+   de verdade em camEstado, e o tween seguinte parte de onde a câmera está. */
+function respiroDesligar(){
+  if(!respiroCam) return;
+  camEstado.dist += respiroDelta();
+  respiroCam = null;
+}
+
+function tickRespiro(dt){
+  if(!respiroCam || camLivre) return;
+  respiroCam.t += dt;
+}
+
 /* ##########################################################################
    MODO CÂMERA LIVRE — ferramenta de desenvolvimento
    --------------------------------------------------------------------------
@@ -3740,6 +4155,9 @@ function alternarCamLivre(){
   $('hudCamera').classList.toggle('on', camLivre);
   $('cena3d').classList.toggle('livre', camLivre);
   camTween = null;
+  /* Entrar em câmera livre congela o respiro na distância atual: o valor que
+     a tecla C copia é o que está na tela, não a distância "de base". */
+  respiroDesligar();
   playSfx('click', .4);
   if(camLivre){ toast('câmera livre · segure 3s para copiar'); }
   else { cancelarSegurar(); toast('câmera livre desligada'); }
@@ -5445,6 +5863,7 @@ function animar(){
   tickQuadroAnims(dt);      // realce do item e fade da pergunta
   tickFades(dt);            // fade de objetos 3D (esvaziar/repor a bancada)
   tickPulsos(dt);           // pulso dos rótulos A/B das torneiras
+  tickRespiro(dt);          // respiro da capa (antes de tickCamera: entra no frame)
   tickCamera();             // easing da câmera
   tickOrbita(dt);           // órbita lenta
   tickMB();                 // animação da curva de Maxwell-Boltzmann
@@ -5526,14 +5945,17 @@ function iniciarApp(){
   graficoConcGrade();
 
   /* Cena de abertura já montada por trás da tela de carregamento.
-     A órbita lenta é a CAPA do app: a câmera passeia enquanto ninguém tocou
-     em nada. O primeiro cue de 'dialogo1' zera orbitaSuave, então clicar em
-     COMEÇAR já para o giro e ele não volta durante a abertura.
+     A CAPA é uma câmera parada de frente para o quadro, atrás da bancada,
+     só respirando na profundidade (ver RESPIRO DA CAPA). Nada de órbita:
+     girando, a câmera acabava de costas para o assunto. O primeiro
+     irParaCamera() da narração encerra o respiro sem salto, então clicar em
+     COMEÇAR entrega a câmera à coreografia e ele não volta.
      (As faixas 'colisoes' e 'encerramento' têm órbita PRÓPRIA, de propósito:
      a arena é uma caixa 3D, que só lê como volume se a câmera se mexer.) */
   prepararBancada({ taxaA:.3, taxaB:.45 });
   irParaCamera(CAM_GERAL, false);
-  orbitaSuave = .03;
+  orbitaSuave = 0;
+  respiroLigar(RESPIRO_AMP, RESPIRO_PERIODO);
 
   animar();
 
