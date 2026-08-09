@@ -5,7 +5,7 @@
   "start_url": "./cinetica.html",
   "scope": "./",
   "display": "fullscreen",
-  "orientation": "any",
+  "orientation": "portrait",
   "background_color": "#150a09",
   "theme_color": "#150a09",
   "lang": "pt-BR",

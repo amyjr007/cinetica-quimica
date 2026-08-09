@@ -45,7 +45,57 @@ html,body{
   background:var(--bg); color:var(--texto); font-family:var(--fonte);
   overscroll-behavior:none; touch-action:manipulation;
 }
-#app{ position:fixed; inset:0; }
+/* --------------------------------------------------------------------------
+   MOLDURA — o app é um aparelho EM PÉ, em qualquer tela
+   --------------------------------------------------------------------------
+   #app não é mais "a janela": é a moldura de um celular em pé. Numa tela de
+   celular ela ocupa tudo; numa janela larga (computador, painel do VS Code
+   deitado, celular virado) ela vira uma caixa vertical centrada, com o resto
+   da tela em fundo neutro.
+
+   Por que isso existe: o enquadramento da cena e o layout do quadro são
+   calibrados para UM formato. Enquanto a janela podia ter qualquer proporção,
+   havia duas calibragens para manter em sincronia e elas divergiam — o
+   preview mostrava uma coisa e o aparelho outra. Com a moldura, existe um
+   formato só, e o que se vê no computador É o que se vê no celular.
+
+   O `transform` não é decoração: elemento transformado vira o BLOCO CONTENDOR
+   dos descendentes `position:fixed`. É ele que faz todos os overlays (que são
+   fixed) se posicionarem contra a moldura em vez de contra a janela, sem eu
+   precisar tocar em nenhum deles.
+
+   E é por isso que a moldura NÃO se centraliza com translate(-50%,-50%): o
+   `transform` do #app é disputado. tremerTela() põe a classe .tremendo, cuja
+   animação escreve transform próprio — uma centralização por transform seria
+   descartada durante o tremor e a moldura pularia para o canto. Centralizar
+   por `left` (calculado em px no JS) deixa o transform livre para tremer, e o
+   translateZ(0) só precisa existir para o bloco contendor valer.
+
+   --vw / --vh são 1% da MOLDURA, em px, escritos por ajustarMoldura(). O CSS
+   inteiro usa calc(var(--vw)*N) no lugar de Nvw justamente porque vw/vh
+   seguiriam a janela e escapariam da moldura — num monitor largo, um
+   "92vw" viraria 1760px dentro de uma caixa de 519px de largura.
+   -------------------------------------------------------------------------- */
+#app{
+  position:fixed; inset:0; overflow:hidden;
+  transform:translateZ(0);
+  background:var(--bg);
+  /* Valores de partida = 1% de 390x844, o aparelho de referência.
+     ajustarMoldura() sobrescreve no primeiro frame. Existem porque, sem eles,
+     todo calc(var(--vw)*N) seria inválido até o JS rodar — e uma declaração
+     inválida derruba a regra inteira, não só o número. */
+  --vw:3.90px; --vh:8.44px;
+}
+/* Moldada = a janela é mais larga que um celular em pé.
+   JS escreve left/top/width/height; aqui só soltamos o inset e damos a borda
+   que separa o aparelho do fundo. */
+#app.moldada{
+  inset:auto;
+  box-shadow:0 0 0 1px rgba(255,255,255,.07), 0 24px 80px rgba(0,0,0,.6);
+}
+/* O fundo FORA da moldura. Sem isto, sobra o branco do documento. */
+body{ background:#0a0908; }
+
 canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 
 /* Vinheta suave por cima do 3D, pro texto brilhar */
@@ -97,28 +147,28 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 }
 #titulo.show{ transform:translateY(0); }
 #titulo h1{
-  margin:0; font-size:clamp(28px,6.2vw,68px); font-weight:800; letter-spacing:.06em;
+  margin:0; font-size:clamp(28px,calc(var(--vw)*6.2),68px); font-weight:800; letter-spacing:.06em;
   text-transform:uppercase; line-height:1.05;
   background:linear-gradient(92deg,var(--rubi),var(--quente) 55%,var(--fogo));
   -webkit-background-clip:text; background-clip:text; color:transparent;
   filter:drop-shadow(0 6px 22px rgba(255,157,51,.35));
 }
 #titulo h2{
-  margin:.5em auto 0; max-width:22ch; font-size:clamp(13px,2.4vw,22px);
+  margin:.5em auto 0; max-width:22ch; font-size:clamp(13px,calc(var(--vw)*2.4),22px);
   font-weight:500; color:var(--texto2); letter-spacing:.02em;
 }
 
 /* ---------- Legenda inferior (máquina de escrever) ---------- */
 #legenda{
-  left:50%; bottom:14vh; transform:translate(-50%,14px);
-  width:min(92vw,900px); text-align:center;
+  left:50%; bottom:calc(var(--vh)*14); transform:translate(-50%,14px);
+  width:min(calc(var(--vw)*92),900px); text-align:center;
 }
 #legenda.show{ transform:translate(-50%,0); }
 #legenda .caixa{
   display:inline-block; padding:.65em 1.1em; border-radius:14px;
   background:var(--painel); border:1px solid var(--borda);
   box-shadow:var(--sombra); backdrop-filter:blur(9px);
-  font-size:clamp(14px,2.5vw,23px); line-height:1.5; color:var(--texto);
+  font-size:clamp(14px,calc(var(--vw)*2.5),23px); line-height:1.5; color:var(--texto);
 }
 #legenda .caixa .cursor{
   display:inline-block; width:.55ch; background:var(--rubi);
@@ -130,14 +180,14 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
    canto superior esquerdo. */
 #frase{
   left:50%; top:calc(10% + env(safe-area-inset-top)); transform:translate(-50%,-10px);
-  width:min(80vw,640px); text-align:center;
+  width:min(calc(var(--vw)*80),640px); text-align:center;
 }
 #frase.show{ transform:translate(-50%,0); }
 #frase .caixa{
   display:inline-block; padding:.6em 1em; border-radius:14px;
   background:var(--painel); border:1px solid var(--borda); box-shadow:var(--sombra);
   backdrop-filter:blur(9px);
-  font-size:clamp(17px,4.3vw,25px); font-weight:700; line-height:1.4; color:var(--texto);
+  font-size:clamp(17px,calc(var(--vw)*4.3),25px); font-weight:700; line-height:1.4; color:var(--texto);
 }
 
 /* ---------- Divisão matemática (dialogo1.1) ----------
@@ -146,11 +196,11 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 /* -40px sobe a divisão duas linhas do próprio corpo (~20px por linha). */
 #divisao{
   left:50%; top:50%; transform:translate(-50%, calc(-50% - 40px));
-  width:min(86vw,560px); text-align:center; z-index:30;
+  width:min(calc(var(--vw)*86),560px); text-align:center; z-index:30;
 }
 #divisao .miolo{ display:inline-block; }
 #divisao .parte{
-  font-size:clamp(16px,4.2vw,24px); font-weight:800; color:var(--quente);
+  font-size:clamp(16px,calc(var(--vw)*4.2),24px); font-weight:800; color:var(--quente);
   padding:.12em 0; opacity:0; transform:translateY(7px);
   transition:opacity .6s ease, transform .6s ease;
 }
@@ -168,7 +218,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 }
 #formula.show{ transform:translate(-50%,0) scale(1); }
 #formula .caixa{
-  font-family:var(--mono); font-size:clamp(19px,4.4vw,44px); font-weight:700;
+  font-family:var(--mono); font-size:clamp(19px,calc(var(--vw)*4.4),44px); font-weight:700;
   padding:.5em .95em; border-radius:16px; letter-spacing:.03em;
   background:linear-gradient(180deg,rgba(34,16,14,.95),rgba(26,11,10,.95));
   border:1.5px solid var(--quente); color:var(--quente);
@@ -180,10 +230,10 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 #badges{
   left:50%; top:22%; transform:translateX(-50%);
   display:flex; gap:10px; flex-wrap:wrap; justify-content:center;
-  width:min(94vw,860px);
+  width:min(calc(var(--vw)*94),860px);
 }
 .badge{
-  padding:.45em .95em; border-radius:999px; font-size:clamp(12px,2.1vw,17px);
+  padding:.45em .95em; border-radius:999px; font-size:clamp(12px,calc(var(--vw)*2.1),17px);
   font-weight:700; letter-spacing:.02em; border:1.5px solid currentColor;
   background:rgba(26,11,10,.85); box-shadow:var(--sombra);
   animation:popIn .5s cubic-bezier(.2,1.5,.4,1) both, flutuar 3.2s ease-in-out infinite;
@@ -198,11 +248,11 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
    ========================================================================== */
 #painelGrafico{
   left:50%; top:50%; transform:translate(-50%,-46%) scale(.92);
-  /* O 140vh é uma trava de ALTURA disfarçada de largura: os SVG têm viewBox
-     560x330, então a altura acompanha a largura (≈ w/1.7 + cabeçalho). Sem
-     ela, um celular DEITADO (tela baixa) esticaria o painel para 760px e o
-     gráfico sairia cortado em cima e embaixo. */
-  width:min(94vw,760px,140vh);
+  /* O terceiro termo (140 de altura) é uma trava de ALTURA disfarçada de
+     largura: os SVG têm viewBox 560x330, então a altura acompanha a largura
+     (≈ w/1.7 + cabeçalho). Sem ela, uma moldura baixa esticaria o painel para
+     760px e o gráfico sairia cortado em cima e embaixo. */
+  width:min(calc(var(--vw)*94),760px,calc(var(--vh)*140));
 }
 #painelGrafico.show{ transform:translate(-50%,-50%) scale(1); }
 #painelGrafico .moldura{
@@ -216,14 +266,14 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   margin:0 4px 6px; min-height:26px;
 }
 #painelGrafico .tituloG{
-  font-size:clamp(12px,2.1vw,17px); font-weight:700; letter-spacing:.08em;
+  font-size:clamp(12px,calc(var(--vw)*2.1),17px); font-weight:700; letter-spacing:.08em;
   text-transform:uppercase; color:var(--rubi);
 }
 /* Fórmula exibida DENTRO do painel: o overlay #formula central ficaria
    coberto pelo painel de gráfico, que ocupa quase toda a tela. */
 #painelGrafico .formG{
   font-family:var(--mono); font-weight:800; letter-spacing:.02em;
-  font-size:clamp(13px,2.3vw,21px); color:var(--quente);
+  font-size:clamp(13px,calc(var(--vw)*2.3),21px); color:var(--quente);
   padding:.18em .6em; border-radius:9px; white-space:nowrap;
   border:1.5px solid transparent; opacity:0;
   transition:opacity .35s ease;
@@ -265,14 +315,14 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
    BOTÃO DE PLAY
    ========================================================================== */
 #play{
-  left:50%; bottom:4.5vh; transform:translate(-50%,10px);
+  left:50%; bottom:calc(var(--vh)*4.5); transform:translate(-50%,10px);
   z-index:40;
 }
 #play.show{ transform:translate(-50%,0); }
 #btnPlay{
   display:flex; align-items:center; gap:12px; cursor:pointer;
   padding:14px 30px 14px 22px; border-radius:999px; border:0;
-  font-family:var(--fonte); font-size:clamp(15px,2.6vw,20px); font-weight:800;
+  font-family:var(--fonte); font-size:clamp(15px,calc(var(--vw)*2.6),20px); font-weight:800;
   letter-spacing:.03em; color:#ffece9;
   background:linear-gradient(135deg,var(--rubi),#c4160e);
   box-shadow:0 10px 30px rgba(255,59,48,.35), 0 0 0 6px rgba(255,59,48,.10);
@@ -298,7 +348,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 #btnSumario span{ display:block; width:20px; height:2.5px; border-radius:2px; background:currentColor; }
 
 #sumario{
-  top:0; left:0; bottom:0; width:min(86vw,360px); transform:translateX(-104%);
+  top:0; left:0; bottom:0; width:min(calc(var(--vw)*86),360px); transform:translateX(-104%);
   z-index:60; background:linear-gradient(180deg,#0d1e19,#081411);
   border-right:1px solid var(--borda); box-shadow:12px 0 40px rgba(0,0,0,.6);
   padding:calc(18px + env(safe-area-inset-top)) 14px 18px; overflow-y:auto;
@@ -337,7 +387,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
    embaixo, onde ficam a legenda e o botão de áudio. */
 #quiz{
   left:50%; top:50%; transform:translate(-50%, calc(-50% - 92px));
-  width:min(96vw,880px); z-index:35;
+  width:min(calc(var(--vw)*96),880px); z-index:35;
 }
 .quiz-card{
   background:linear-gradient(180deg,rgba(32,15,13,.96),rgba(20,10,9,.97));
@@ -361,11 +411,11 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 .quiz-barra i{ display:block; height:100%; width:0; background:linear-gradient(90deg,var(--rubi),var(--quente)); transition:width .5s; }
 
 .quiz-enunciado{
-  font-size:clamp(15px,2.6vw,22px); font-weight:600; line-height:1.45; margin:0 0 12px;
+  font-size:clamp(15px,calc(var(--vw)*2.6),22px); font-weight:600; line-height:1.45; margin:0 0 12px;
 }
 .quiz-figura{ display:flex; justify-content:center; margin:0 0 12px; }
 .quiz-figura svg{ max-width:100%; height:auto; }
-.quiz-figura .emoji{ font-size:clamp(38px,9vw,66px); line-height:1; }
+.quiz-figura .emoji{ font-size:clamp(38px,calc(var(--vw)*9),66px); line-height:1; }
 
 .quiz-alts{ display:grid; gap:9px; }
 .quiz-alts.duas-col{ grid-template-columns:1fr 1fr; }
@@ -385,7 +435,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 .alt{
   display:flex; align-items:center; gap:11px; text-align:left; cursor:pointer;
   padding:12px 14px; border-radius:13px; font-family:var(--fonte);
-  font-size:clamp(14px,2.3vw,18px); font-weight:600; color:var(--texto);
+  font-size:clamp(14px,calc(var(--vw)*2.3),18px); font-weight:600; color:var(--texto);
   background:rgba(255,255,255,.04); border:1.5px solid rgba(255,255,255,.09);
   transition:background .15s, border-color .15s, transform .12s, opacity .3s;
   opacity:0; transform:translateY(10px);
@@ -455,15 +505,15 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 
 /* --- Aviso "responda na cena 3D" --- */
 #quiz3dAviso{
-  left:50%; bottom:16vh; transform:translate(-50%,10px); z-index:35;
-  width:min(92vw,620px); text-align:center;
+  left:50%; bottom:calc(var(--vh)*16); transform:translate(-50%,10px); z-index:35;
+  width:min(calc(var(--vw)*92),620px); text-align:center;
 }
 #quiz3dAviso.show{ transform:translate(-50%,0); }
 #quiz3dAviso .caixa{
   display:inline-block; padding:.7em 1.2em; border-radius:14px;
   background:var(--painel); border:1.5px solid var(--roxo); color:var(--texto);
   box-shadow:0 0 30px rgba(200,107,255,.25), var(--sombra);
-  font-size:clamp(14px,2.4vw,20px); font-weight:700;
+  font-size:clamp(14px,calc(var(--vw)*2.4),20px); font-weight:700;
 }
 
 /* ==========================================================================
@@ -544,7 +594,7 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 /* HUD compacto: só o título e o botão de copiar. */
 #hudCamera{
   position:fixed; z-index:70; left:10px; bottom:46px; display:none;
-  width:max-content; min-width:124px; max-width:60vw;
+  width:max-content; min-width:124px; max-width:calc(var(--vw)*60);
   padding:8px 9px 9px; border-radius:12px; text-align:center;
   background:rgba(26,11,10,.94); border:1px solid var(--rubi);
   box-shadow:var(--sombra); backdrop-filter:blur(6px);
@@ -580,7 +630,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
 #toast{
   position:fixed; z-index:95; left:50%; bottom:calc(88px + env(safe-area-inset-bottom));
   transform:translate(-50%,12px); opacity:0; visibility:hidden; pointer-events:none;
-  padding:8px 16px; border-radius:999px; max-width:88vw; text-align:center;
+  padding:8px 16px; border-radius:999px; max-width:calc(var(--vw)*88); text-align:center;
   font-family:var(--fonte); font-size:13px; font-weight:700; letter-spacing:.02em;
   background:rgba(26,11,10,.95); border:1px solid var(--rubi); color:var(--rubi);
   box-shadow:var(--sombra); backdrop-filter:blur(6px);
@@ -640,48 +690,80 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
 #avisoAudio.show{ opacity:1; visibility:visible; }
 
 /* ==========================================================================
-   RETRATO (celular em pé) — v1.1.0
+   AJUSTES DE RETRATO — agora INCONDICIONAIS
    --------------------------------------------------------------------------
-   O app nasceu em paisagem e o manifest travava a orientação. Agora ele roda
-   nas duas, e o retrato precisa de três correções:
+   Isto era um @media (orientation: portrait). Deixou de ser: a moldura é
+   sempre em pé, então a condição valia sempre e a media query só enganava
+   quem lesse. Pior — a media query pergunta pela ORIENTAÇÃO DA JANELA, não
+   pela da moldura, então num computador (janela deitada, moldura em pé) ela
+   dava FALSO e o app usava a tipografia de paisagem dentro de um quadro
+   vertical. Era um dos jeitos do preview mentir sobre o aparelho.
 
-   1) TIPOGRAFIA. Quase todo texto usa clamp(min, Nvw, max). Em pé, 1vw vale
-      ~3,9px num celular comum, então TODO clamp cai no valor mínimo e a
-      narração fica miúda. Aqui subimos só os mínimos — em paisagem nada muda.
-   2) GRÁFICOS SVG. O painel encolhe para 94vw (~366px) e o viewBox 560x330 é
-      reduzido junto, levando os rótulos a ~9px reais. Aumentamos as fontes
-      DENTRO do viewBox para compensar a redução.
-   3) FOLGA VERTICAL. Sobra altura em pé: a legenda desce um pouco e o painel
-      de gráfico volta ao centro exato, sem risco de encostar no rodapé.
+   Continuam sendo sobrescritas de propósito, e não valores mesclados nas
+   regras-base: aqui em baixo elas vencem por ordem de fonte, e manter o bloco
+   separado deixa claro o que é ajuste de tela estreita e o que é a regra
+   geral. O que cada uma resolve:
 
-   A cena 3D não precisa de nada aqui: o retrato é a tela de REFERÊNCIA dela,
-   e as constantes CAM_* já são medidas nele (ver ASPECT_BASE na seção 8).
+   1) TIPOGRAFIA. Quase todo texto usa clamp(min, N * --vw, max). Numa moldura
+      de ~390px, 1 unidade de --vw vale ~3,9px, então TODO clamp cairia no
+      mínimo e a narração ficaria miúda. Aqui subimos só os mínimos.
+   2) GRÁFICOS SVG. O painel encolhe para 94 de largura (~366px) e o viewBox
+      560x330 é reduzido junto, levando os rótulos a ~9px reais. Aumentamos as
+      fontes DENTRO do viewBox para compensar.
+   3) FOLGA VERTICAL. Sobra altura numa tela em pé: a legenda desce um pouco e
+      o painel de gráfico volta ao centro exato, sem encostar no rodapé.
    ========================================================================== */
-@media (orientation: portrait){
 
-  /* ---- 1) tipografia ---- */
-  #titulo h2            { font-size:clamp(15px,4.2vw,22px); }
-  #legenda .caixa       { font-size:clamp(17px,4.4vw,23px); }
-  #formula .caixa       { font-size:clamp(21px,5.6vw,44px); }
-  .badge                { font-size:clamp(14px,3.6vw,17px); }
-  .quiz-enunciado       { font-size:clamp(17px,4.6vw,22px); }
-  #quiz3dAviso .caixa   { font-size:clamp(16px,4.2vw,20px); }
-  .alt                  { font-size:clamp(15px,4vw,18px); }
+/* ---- 1) tipografia ---- */
+#titulo h2            { font-size:clamp(15px,calc(var(--vw)*4.2),22px); }
+#legenda .caixa       { font-size:clamp(17px,calc(var(--vw)*4.4),23px); }
+#formula .caixa       { font-size:clamp(21px,calc(var(--vw)*5.6),44px); }
+.badge                { font-size:clamp(14px,calc(var(--vw)*3.6),17px); }
+.quiz-enunciado       { font-size:clamp(17px,calc(var(--vw)*4.6),22px); }
+#quiz3dAviso .caixa   { font-size:clamp(16px,calc(var(--vw)*4.2),20px); }
+.alt                  { font-size:clamp(15px,calc(var(--vw)*4),18px); }
 
-  /* ---- 2) gráficos ---- */
-  #painelGrafico .tituloG{ font-size:clamp(12px,3vw,17px); }
-  #painelGrafico .formG  { font-size:clamp(14px,3.6vw,21px); }
-  /* Título e fórmula lado a lado não cabem num painel de ~330px úteis. */
-  #painelGrafico .cabG   { flex-wrap:wrap; justify-content:center; }
-  .eixo-txt{ font-size:21px; }   /* 14px no viewBox → ~14px reais em pé */
-  .rotulo  { font-size:23px; }   /* 15px no viewBox                      */
+/* ---- 2) gráficos ---- */
+#painelGrafico .tituloG{ font-size:clamp(12px,calc(var(--vw)*3),17px); }
+#painelGrafico .formG  { font-size:clamp(14px,calc(var(--vw)*3.6),21px); }
+/* Título e fórmula lado a lado não cabem num painel de ~330px úteis. */
+#painelGrafico .cabG   { flex-wrap:wrap; justify-content:center; }
+.eixo-txt{ font-size:21px; }   /* 14px no viewBox → ~14px reais em pé */
+.rotulo  { font-size:23px; }   /* 15px no viewBox                      */
 
-  /* ---- 3) folga vertical ---- */
-  #painelGrafico       { transform:translate(-50%,-50%) scale(.92); }
-  #painelGrafico.show  { transform:translate(-50%,-50%) scale(1); }
-  #legenda             { bottom:11vh; }
-  #quiz3dAviso         { bottom:13vh; }
-  #titulo              { top:16%; }
+/* ---- 3) folga vertical ---- */
+#painelGrafico       { transform:translate(-50%,-50%) scale(.92); }
+#painelGrafico.show  { transform:translate(-50%,-50%) scale(1); }
+#legenda             { bottom:calc(var(--vh)*11); }
+#quiz3dAviso         { bottom:calc(var(--vh)*13); }
+#titulo              { top:16%; }
+
+/* --------------------------------------------------------------------------
+   "GIRE O APARELHO" — só para celular deitado
+   --------------------------------------------------------------------------
+   Num computador a moldura resolve sozinha: sobra tela, a caixa vertical fica
+   no meio e ninguém precisa girar nada. Num celular deitado não sobra: a
+   moldura ficaria com ~190px de largura, ilegível. Aí vale interromper.
+   Usa vh/vw de verdade (não --vw): este elemento é da JANELA, não da moldura.
+   -------------------------------------------------------------------------- */
+#gire{
+  position:fixed; inset:0; z-index:200; display:none;
+  align-items:center; justify-content:center; flex-direction:column; gap:18px;
+  background:#0a0908; color:var(--texto); text-align:center; padding:24px;
+}
+#gire.on{ display:flex; }
+#gire .icone{
+  font-size:clamp(46px,11vh,86px); line-height:1;
+  transform:rotate(90deg); animation:girarDica 2.6s ease-in-out infinite;
+}
+#gire p{
+  margin:0; font-family:var(--fonte); font-size:clamp(15px,3.4vh,22px);
+  font-weight:600; line-height:1.45; color:rgba(255,236,232,.78);
+}
+#gire b{ color:var(--rubi); font-weight:800; }
+@keyframes girarDica{
+  0%,45%   { transform:rotate(90deg); }
+  70%,100% { transform:rotate(0deg); }
 }
 </style>
 </head>
@@ -870,7 +952,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.19.0</div>
+  <div id="versao">v1.20.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -916,6 +998,14 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <audio id="player" preload="auto" playsinline></audio>
 </div>
 
+<!-- Pedido de girar o aparelho. FORA de #app de propósito: precisa cobrir a
+     janela inteira, inclusive o fundo em volta da moldura. Só aparece em
+     aparelho pequeno deitado — num computador a moldura já resolve. -->
+<div id="gire" aria-hidden="true">
+  <div class="icone">📱</div>
+  <p>Gire o aparelho<br><b>para a vertical</b></p>
+</div>
+
 <!-- Three.js LOCAL (funciona offline, no preview e no PWA instalado).
      Se este arquivo faltar, garantirThree() lá embaixo tenta o CDN. -->
 <script src="libs/three.min.js"></script>
@@ -946,7 +1036,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.19.0';
+const VERSAO = 'v1.20.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2087,19 +2177,14 @@ function texturaParedeSlide(){
    propósito e um material que recebe luz deixaria o texto ilegível. O
    degradê de "luz batendo no quadro" já vem pintado no próprio canvas.
 
-   ÁREA ÚTIL: o quadro tem 10.5 x 5.6 e a tela quase nunca enquadra tudo, então
-   o layout depende da ORIENTAÇÃO — ver LAYOUT_QUADRO:
+   ÁREA ÚTIL: o quadro tem 10.5 x 5.6 e a tela não enquadra tudo. A moldura é
+   estreita, então com a largura toda as pontas do texto cairiam fora: o texto
+   vive numa COLUNA de 70% da largura, que a CAM_QUADRO_DEF enquadra inteira.
+   Em compensação o quadro cabe todo na vertical, e dá para usar o topo.
+   Um layout só — ver LAYOUT_QUADRO.
 
-     paisagem  a CAM_QUADRO_DEF corta a faixa de cima do quadro (o topo do
-               plano fica fora do frustum) mas sobra largura de sobra. Texto
-               ocupando quase toda a largura, título a 18% da altura.
-     retrato   a tela é estreita: com a largura toda, as pontas do texto caem
-               fora. Texto numa COLUNA central de 60% da largura, que a
-               CAM_QUADRO_DEF_P consegue enquadrar inteira. Em compensação o
-               quadro cabe todo na vertical, então dá para usar o topo.
-
-   pintarQuadro() é chamada de novo em aoRedimensionar(): girar o aparelho
-   troca o layout na hora.
+   pintarQuadro() é chamada de novo em aoRedimensionar(), porque um
+   redimensionamento pode mudar o tamanho da moldura.
    -------------------------------------------------------------------------- */
 const QUADRO_W = 1920, QUADRO_H = 1024;      // 1.875 = 10.5/5.6, o mesmo do plano
 
@@ -2155,67 +2240,51 @@ const CAMPOS_QUADRO = {
   pergunta:  { n:'perguntaRevelado', c:'perguntaCaret' }
 };
 
-/* Um layout por orientação. u/v são frações da textura (0..1).
-     colEsq/colDir  coluna de texto      tituloV  baseline do título
-     tituloU        centro do título — o KNOB para deslocar só ele
-     rotuloV        baseline de "Definição:"
-     defV           baseline da 1ª linha da definição
-     linha          altura de linha, em px de textura                       */
+/* --------------------------------------------------------------------------
+   LAYOUT DO QUADRO — um só, porque a moldura é uma só
+   --------------------------------------------------------------------------
+   Havia dois: `paisagem` e `retrato`, escolhidos pela orientação da janela.
+   Não há mais orientação: a moldura é sempre um celular em pé (ver #app), e
+   manter o par significava manter duas calibragens em sincronia — que foi
+   exatamente o que passou a divergir entre o preview e o aparelho. O de
+   paisagem está no histórico do git se um dia fizer falta.
+
+   u/v são frações da textura (0..1). ESTES SÃO OS KNOBS:
+     colEsq/colDir  movem e estreitam a coluna de texto
+     tituloU        move SÓ o título na horizontal
+     tituloV/rotuloV/defV   sobem e descem cada bloco
+     linha          entrelinha, em px de textura
+
+   Calibrado para a CAM_QUADRO_DEF. A coluna é deslocada para a direita porque
+   o eixo daquela câmera é oblíquo: o centro do quadro (x = 0) aparece 0.74 à
+   esquerda do centro da tela. Com a coluna simétrica em .200–.800, a margem
+   esquerda do texto nascia por cima da borda.
+
+   Uma "linha" de deslocamento = 63px de textura. A textura é isotrópica
+   (1920x1024 sobre 10.5x5.6: 10.5/1920 = 5.6/1024), então esses 63px valem a
+   mesma distância na horizontal e na vertical — dá para usar a entrelinha
+   como régua para mover na horizontal.
+
+   Com a câmera atual, colEsq .280 põe a margem esquerda em ndcX -0.93 e
+   colDir .975 põe a direita em +0.92: sete por cento de folga de cada lado.
+   Encostar em -1.00 corta o primeiro caractere de cada linha.
+
+   A entrelinha (90) é folgada de propósito, para a lista respirar. Cuidado:
+   ela empurra o item 3 para baixo, e `perguntaV` tem de descer junto ou os
+   dois se encostam — .791 deixa 40px de folga sobre o item 3.
+   -------------------------------------------------------------------------- */
 const LAYOUT_QUADRO = {
-  paisagem: { colEsq:.095, colDir:.905, tituloU:.500,
-              tamTitulo:104, tamRotulo:68, tamDef:68,
-              tituloV:.255, fileteV:.305, rotuloV:.445, defV:.575, linha:92,
-              perguntaV:.900,
-              /* Créditos: entre o filete e o rótulo. Nesta faixa da textura é
-                 onde depois vai "Definição:", e é por isso que os créditos só
-                 existem com o quadro limpo. */
-              tamCredito:54, creditoV:.368, creditoLinha:62,
-              tamAno:44, anoV:.898 },
-
-  /* RETRATO — calibrado para a CAM_QUADRO_DEF_P. ESTES SÃO OS KNOBS:
-       colEsq/colDir  movem e estreitam a coluna de texto
-       tituloU        move SÓ o título na horizontal
-       tituloV/rotuloV/defV   sobem e descem cada bloco
-
-     A coluna é deslocada para a direita porque o eixo daquela câmera é
-     oblíquo: o centro do quadro (x = 0) aparece 0.74 à esquerda do centro
-     da tela. Com a coluna simétrica em .200–.800, a margem esquerda do texto
-     nascia por cima da borda da tela.
-     Do jeito que está, o centro da coluna (.5715) cai praticamente em cima
-     do centro da tela, e tituloU .550 deixa o título um tico à esquerda dele.
-
-     Fontes 30% menores que a calibragem anterior. Não é perda de tamanho na
-     tela: a câmera nova olha o quadro de 16.6 de distância contra 24.1 da
-     anterior, então a definição sai com ~14px de tela nos dois casos. */
-  /* Uma "linha" de deslocamento = 63px de textura, a entrelinha anterior.
-     A textura é isotrópica (1920x1024 sobre 10.5x5.6: 10.5/1920 = 5.6/1024),
-     então esses 63px valem a mesma distância na horizontal e na vertical —
-     dá para usar a entrelinha como régua para mover na horizontal.
-       título      -15%, e no total 2 + 1.5 linhas à esquerda
-                   (.550 -> .484 -> .4395). As 1.5 usam a entrelinha ATUAL
-                   (57px), que é o espaçamento que se vê na tela.
-       rótulo/def  a coluna é recalibrada a cada troca de CAM_QUADRO_DEF_P.
-                   Com a câmera atual, .280 põe a margem esquerda em ndcX
-                   -0.93 e .975 põe a direita em +0.92 — sete por cento de
-                   folga de cada lado. Encostar em -1.00 corta o primeiro
-                   caractere de cada linha.
-     Referência de medida: celular em pé 390x844.
-     A entrelinha (90) é folgada de propósito, para a lista respirar. Cuidado:
-     ela empurra o item 3 para baixo, e `perguntaV` tem de descer junto ou os
-     dois se encostam — .791 deixa 40px de folga sobre o item 3. */
-  retrato:  { colEsq:.280, colDir:.975, tituloU:.4395,
-              tamTitulo:66, tamRotulo:48, tamDef:52,
-              tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:90,
-              perguntaV:.791,
-              /* Créditos centrados em tituloU, não no centro da coluna: eles
-                 pertencem ao título. Com 40px a linha mais larga ("Aplicativo
-                 desenvolvido pelo") mede quase o mesmo que o título — que já
-                 se sabe enquadrado pela CAM_QUADRO_DEF_P. */
-              tamCredito:40, creditoV:.258, creditoLinha:46,
-              tamAno:34, anoV:.880 }
+  colEsq:.280, colDir:.975, tituloU:.4395,
+  tamTitulo:66, tamRotulo:48, tamDef:52,
+  tituloV:.150, fileteV:.200, rotuloV:.330, defV:.455, linha:90,
+  perguntaV:.791,
+  /* Créditos centrados em tituloU, não no centro da coluna: eles pertencem ao
+     título. Com 40px a linha mais larga ("Aplicativo desenvolvido pelo") mede
+     quase o mesmo que o título — que já se sabe enquadrado. */
+  tamCredito:40, creditoV:.258, creditoLinha:46,
+  tamAno:34, anoV:.880
 };
-function ehRetrato(){ return window.innerHeight > window.innerWidth; }
-function layoutQuadro(){ return ehRetrato() ? LAYOUT_QUADRO.retrato : LAYOUT_QUADRO.paisagem; }
+function layoutQuadro(){ return LAYOUT_QUADRO; }
 
 let _cvQuadro = null, _ctxQuadro = null, _texQuadro = null;
 
@@ -2665,7 +2734,7 @@ function iniciar3D(){
   const cv = $('cena3d');
   renderer = new THREE.WebGLRenderer({ canvas:cv, antialias:true, alpha:false });
   renderer.setPixelRatio(dprCena());
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.setSize(telaW(), telaH(), false);
   /* Sombras: é o que dava mais falta. Sem elas os béqueres pareciam colados
      na bancada por Photoshop, sem peso e sem contato com o tampo.
      PCFSoft com mapa de 1024 — a cena tem poucas dezenas de malhas, então o
@@ -2686,7 +2755,7 @@ function iniciar3D(){
      Se um dia voltar, tem de começar depois da distância da câmera mais
      afastada, senão volta o mesmo problema. */
 
-  camera = new THREE.PerspectiveCamera(48, window.innerWidth/window.innerHeight, .1, 200);
+  camera = new THREE.PerspectiveCamera(48, telaW()/telaH(), .1, 200);
   relogio = new THREE.Clock();
 
   /* Precisa do renderer pronto: gera o envMap (PMREM) usado pelos metais. */
@@ -2741,11 +2810,69 @@ function iniciar3D(){
   aoRedimensionar();
 }
 
-function aoRedimensionar(){
+/* --------------------------------------------------------------------------
+   MOLDURA — quanta tela o app realmente ocupa
+   --------------------------------------------------------------------------
+   Daqui para baixo, "tela" é a MOLDURA (#app), nunca a janela. telaW()/telaH()
+   são a fonte única desse número: o renderer, a câmera, o canvas do confete e
+   o raycast do quiz 3D leem todos daqui, então não há como um deles ficar
+   medindo a janela e desalinhar dos outros.
+
+   Quando a janela já tem forma de celular em pé, a moldura ocupa tudo e não
+   há moldura nenhuma a rigor — é o caso do aparelho de verdade. Só quando a
+   janela é mais larga que LIMITE_RETRATO é que ela vira caixa centrada.
+
+   LIMITE_RETRATO = 0.75 separa com folga os dois mundos: celular em pé vai de
+   ~0.45 (tela cheia) a ~0.65 (com a barra do navegador comendo altura), e
+   janela deitada ou quadrada começa perto de 1. Nada real cai no meio.
+   -------------------------------------------------------------------------- */
+/* A moldura É a tela de referência: usamos ASPECT_REF direto, DENTRO da
+   função. No topo do script não daria — ASPECT_REF é um const declarado lá na
+   seção da câmera, e lê-lo aqui em cima cairia na zona morta temporal. */
+const LIMITE_RETRATO = 0.75;
+
+function telaW(){ const m = $('app'); return (m && m.clientWidth)  || window.innerWidth; }
+function telaH(){ const m = $('app'); return (m && m.clientHeight) || window.innerHeight; }
+
+function ajustarMoldura(){
+  const m = $('app');
+  if(!m) return;
   const w = window.innerWidth, h = window.innerHeight;
+  const janelaLarga = (w / h) > LIMITE_RETRATO;
+
+  if(janelaLarga){
+    /* Caixa em pé, o mais alta que a janela permitir, centrada por `left` —
+       nunca por transform, que é do tremor (ver o bloco da moldura no CSS). */
+    const ah = h, aw = Math.round(h * ASPECT_REF);
+    m.classList.add('moldada');
+    m.style.width  = aw + 'px';   m.style.height = ah + 'px';
+    m.style.left   = Math.round((w - aw) / 2) + 'px';
+    m.style.top    = '0px';
+  } else {
+    m.classList.remove('moldada');
+    m.style.width = ''; m.style.height = '';
+    m.style.left  = ''; m.style.top    = '';
+  }
+
+  /* --vw / --vh: 1% da MOLDURA em px. Todo o CSS depende disto — ver o bloco
+     da moldura lá em cima. Escrito depois de fixar o tamanho, para clientWidth
+     já refletir a caixa nova. */
+  m.style.setProperty('--vw', (m.clientWidth  / 100) + 'px');
+  m.style.setProperty('--vh', (m.clientHeight / 100) + 'px');
+
+  /* Celular deitado: a moldura ficaria com ~190px de largura. Melhor pedir
+     para girar. Num computador (janela alta) a moldura basta. */
+  const celularDeitado = janelaLarga && h < 560;
+  $('gire').classList.toggle('on', celularDeitado);
+}
+
+function aoRedimensionar(){
+  ajustarMoldura();
+  const w = telaW(), h = telaH();
   if(renderer){ renderer.setPixelRatio(dprCena()); renderer.setSize(w, h, false); }
-  /* O FOV acompanha o formato da janela — ver fovDaTela(). É o que faz o
-     preview e o celular mostrarem a MESMA composição horizontal. */
+  /* O FOV ainda acompanha o formato — ver fovDaTela(). Com a moldura, o
+     formato quase nunca muda, mas telas em pé mais estreitas que a referência
+     continuam existindo (painel fino do VS Code) e precisam abrir o FOV. */
   if(camera){
     camera.aspect = w / h;
     camera.fov = fovDaTela();
@@ -2754,26 +2881,25 @@ function aoRedimensionar(){
   const dpr = dprCena();
   cvConfete.width = w * dpr; cvConfete.height = h * dpr;
   cvConfete.style.width = w + 'px'; cvConfete.style.height = h + 'px';
-  /* Girar o aparelho troca o layout do texto do quadro (coluna larga em
-     paisagem, estreita em retrato) — ver LAYOUT_QUADRO. */
   pintarQuadro();
   mostrarFormatoDaTela();
 }
 
-/* Formato desta janela, no HUD da câmera livre. Existe para responder à
-   pergunta "por que no celular está diferente do preview?" sem adivinhação:
-   é o ASPECTO que decide o FOV, e comparar os dois números lado a lado mostra
-   na hora se as duas telas estão no mesmo enquadramento ou não.
-   O de referência (0.481) fica escrito junto, para servir de régua. */
+/* Formato da moldura, no HUD da câmera livre. Existe para responder à pergunta
+   "por que no celular está diferente do preview?" sem adivinhação: é o ASPECTO
+   que decide o FOV, e comparar os dois números lado a lado mostra na hora se
+   as duas telas estão no mesmo enquadramento. O de referência fica escrito
+   junto, para servir de régua, e a janela aparece entre parênteses quando a
+   moldura é menor que ela. */
 function mostrarFormatoDaTela(){
   const el = $('hudTela');
   if(!el) return;
-  const w = window.innerWidth, h = window.innerHeight;
-  const a = w / h;
+  const w = telaW(), h = telaH();
+  const moldada = $('app').classList.contains('moldada');
   el.innerHTML =
-    w + '&times;' + h + '<br>aspecto ' + a.toFixed(3) +
-    ' (ref ' + ASPECT_REF + ')<br>fov ' + fovDaTela().toFixed(1) + '&deg; &middot; ' +
-    (ehRetrato() ? 'retrato' : 'paisagem');
+    w + '&times;' + h + (moldada ? ' (moldura)' : '') +
+    '<br>aspecto ' + (w / h).toFixed(3) + ' &middot; ref ' + ASPECT_REF +
+    '<br>fov ' + fovDaTela().toFixed(1) + '&deg;';
 }
 
 /* -------------------- montagem / desmontagem de cenas -------------------- */
@@ -3958,27 +4084,25 @@ const CAM_DUPLA   = { theta: 0.00, phi: 1.30, dist:  17.2, target:[0, 1.2, .2] }
 const CAM_ARENA   = { theta: 0.00, phi: 1.30, dist: 22.1, target:[0, 2.45, 0] };
 const CAM_ARENA_P = { theta: 0.34, phi: 1.34, dist:  16, target:[0, 2.45, 0] };
 const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  18.1, target:[0, 3.0, -2.6] };
-/* Enquadramento da DEFINIÇÃO: bancada em primeiro plano e o quadro ocupando a
-   metade de cima da tela — o "plano de sala de aula". Cuidado ao mexer: essa
-   câmera corta a faixa superior do quadro, e o layout de pintarQuadro() já
-   está calibrado para ela (título a ~18% da altura da textura). */
-const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, -0.3] };
-/* Mesma cena em RETRATO — a que o app usa de verdade.
-   O QUADRO É O ASSUNTO aqui, não cenário: a distância é escolhida pelo
-   tamanho que o texto precisa ter para ser lido, não pelo enquadramento da
-   sala. Com dist 38.4 (a versão anterior, um plano aberto da bancada) o
-   quadro ficava com 128px de altura numa tela de 798 e a definição saía com
-   6.5px — ilegível. A 16.2 ela dá 13.5px.
+/* Enquadramento da DEFINIÇÃO.
+   Havia duas: uma de paisagem e uma de retrato, escolhidas por camDefinicao().
+   Ficou só esta — a de retrato, que é a que o app sempre usou de verdade. A de
+   paisagem está no histórico do git.
 
-   Não adianta compensar isso com fonte maior: a 111 texels, que é o corpo
+   O QUADRO É O ASSUNTO aqui, não cenário: a distância é escolhida pelo tamanho
+   que o texto precisa ter para ser lido, não pelo enquadramento da sala. Com
+   dist 38.4 (a versão anterior, um plano aberto da bancada) o quadro ficava
+   com 128px de altura numa tela de 798 e a definição saía com 6.5px —
+   ilegível. A 16.2 ela dá 13.5px.
+
+   Não adianta compensar com fonte maior: a 111 texels, que é o corpo
    necessário àquela distância, a lista vira 9 linhas com entrelinha 193 —
    1544px numa textura de 1024. Ou o quadro é assunto, ou o texto encolhe.
 
    O eixo é oblíquo (o centro do quadro não cai no centro da tela), e o
-   layout retrato de pintarQuadro() é calibrado em par com esta constante:
-   ao trocá-la, confira as margens do texto. */
-const CAM_QUADRO_DEF_P = { theta: 0.02, phi: 1.29, dist: 16.2, target:[1.5, -0.4, -1.6] };
-function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
+   LAYOUT_QUADRO de pintarQuadro() é calibrado em par com esta constante: ao
+   trocá-la, confira as margens do texto. */
+const CAM_QUADRO_DEF = { theta: 0.02, phi: 1.29, dist: 16.2, target:[1.5, -0.4, -1.6] };
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
    negativo o z, mais à direita o objeto aparece. É por isso que a torneira B
@@ -4060,34 +4184,33 @@ let camTween  = null;
    aspecto (0.55, 0.60...). Mais largo = FOV vertical menor = quadro maior e
    mais alto. Daí "no preview está ótimo, no celular está com zoom e em cima".
 
-   A REGRA AGORA É "CABER" (contain), e não "preservar a largura":
+   A REGRA É "CABER" (contain), e não "preservar a largura":
 
        tan(fov/2) = tan(FOV_REF/2) * max(1, ASPECT_REF / aspecto)
 
    O max() põe um PISO na altura visível: nenhuma tela mostra menos vertical
-   do que a de referência. Telas mais estreitas continuam abrindo o FOV para
-   não cortar dos lados (o comportamento de antes); telas mais largas param de
-   fechar e simplesmente ganham cena nas laterais.
+   do que a de referência. Molduras mais estreitas continuam abrindo o FOV para
+   não cortar dos lados; molduras mais largas param de fechar e simplesmente
+   ganham cena nas laterais.
 
    O que isso garante: o que aparece na tela de referência aparece em TODAS.
-   O que isso não garante: ocupar a mesma fração da largura — numa tela larga
-   sobra margem dos lados. É a escolha certa aqui, porque cortar o quadro
+   O que isso não garante: ocupar a mesma fração da largura — numa moldura mais
+   larga sobra margem dos lados. É a escolha certa aqui, porque cortar o quadro
    perde a aula e sobrar margem não perde nada.
 
-   PAISAGEM fica de fora do piso, com a fórmula antiga. Naquele formato o
-   valor cai no limite inferior do clamp (20°) e as constantes CAM_*_DEF de
-   paisagem foram calibradas JÁ COM esse 20° — pôr o piso ali trocaria o FOV
-   de 20 para 48 e desenquadraria tudo o que já está certo.
+   E COM A MOLDURA, quase nunca sobra: numa janela larga o app é encaixotado
+   em ASPECT_REF exato (ver ajustarMoldura()), então o fator dá 1 e o FOV é
+   FOV_REF cravado — o computador mostra o mesmo que o celular. O piso segue
+   valendo para o que a moldura não cobre: janelas em pé mais estreitas que a
+   referência, como um painel fino do VS Code, que ainda precisam abrir o FOV
+   para não cortar dos lados.
    -------------------------------------------------------------------------- */
 const ASPECT_REF = 0.481;          // 384x798, o aparelho de referência
 const FOV_REF    = 48;             // FOV vertical NA tela de referência
 
 function fovDaTela(){
   const a = (camera && camera.aspect) ? camera.aspect : ASPECT_REF;
-  const razao = ASPECT_REF / a;
-  /* O piso (max com 1) só vale em retrato — ver o bloco acima. */
-  const fator = ehRetrato() ? Math.max(1, razao) : razao;
-  const tan = Math.tan(FOV_REF / 2 * Math.PI / 180) * fator;
+  const tan = Math.tan(FOV_REF / 2 * Math.PI / 180) * Math.max(1, ASPECT_REF / a);
   return clamp(2 * Math.atan(tan) * 180 / Math.PI, 20, 70);
 }
 
@@ -4261,7 +4384,7 @@ function textoCamera(){
      realmente caíram — dá para conferir o cálculo contra o aparelho em vez de
      deduzir por print. */
   const l = [];
-  l.push('tela ' + window.innerWidth + 'x' + window.innerHeight +
+  l.push('tela ' + telaW() + 'x' + telaH() +
          '  dpr ' + (window.devicePixelRatio || 1).toFixed(2) +
          '  aspecto ' + (camera ? camera.aspect.toFixed(3) : '—') +
          '  fov ' + (camera ? camera.fov.toFixed(1) : '—') +
@@ -4338,7 +4461,7 @@ const _vDir = new THREE.Vector3();
 const _vDireita = new THREE.Vector3(), _vCima = new THREE.Vector3();
 function panCamera(dxPx, dyPx){
   const alturaVisivel = 2 * camEstado.dist * Math.tan(camera.fov * Math.PI / 360);
-  const escala = alturaVisivel / Math.max(1, window.innerHeight);
+  const escala = alturaVisivel / Math.max(1, telaH());
 
   camera.getWorldDirection(_vDir);
   _vDireita.crossVectors(_vDir, camera.up).normalize();
@@ -5298,8 +5421,12 @@ function cliqueNaCena(ev){
   if(!alvos3D || quizRespondido) return;
   if(!raycaster){ raycaster = new THREE.Raycaster(); ponteiro = new THREE.Vector2(); }
 
-  ponteiro.x =  (ev.clientX / window.innerWidth)  * 2 - 1;
-  ponteiro.y = -(ev.clientY / window.innerHeight) * 2 + 1;
+  /* clientX/Y são da JANELA; o canvas vive dentro da moldura. Numa janela
+     larga a moldura está deslocada para o meio, e sem descontar o retângulo
+     dela o toque cairia à direita do béquer que o aluno tocou. */
+  const r = $('app').getBoundingClientRect();
+  ponteiro.x =  ((ev.clientX - r.left) / r.width)  * 2 - 1;
+  ponteiro.y = -((ev.clientY - r.top)  / r.height) * 2 + 1;
   raycaster.setFromCamera(ponteiro, camera);
 
   const objetos = alvos3D.mapa.map(m => m.obj);
@@ -5381,7 +5508,7 @@ const EVENTOS = {
                        trazerEquipamentos(0);
                        guardarEquipamentos(1400);
                        quadroDefinir({ titulo:'Cinética Química', rotulo:'', definicao:'' });
-                       irParaCamera(camDefinicao(), true, 1600); orbitaSuave = 0; } },
+                       irParaCamera(CAM_QUADRO_DEF, true, 1600); orbitaSuave = 0; } },
 
     /* 1.2 s: o rótulo começa a ser digitado, igual à definição. */
     { t:1.2,  fn:()=>{ digitarNoQuadro('Definição:', 1.2, 2.4, 'rotulo');
