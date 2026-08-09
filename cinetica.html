@@ -137,16 +137,19 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   display:inline-block; padding:.6em 1em; border-radius:14px;
   background:var(--painel); border:1px solid var(--borda); box-shadow:var(--sombra);
   backdrop-filter:blur(9px);
-  font-size:clamp(16px,4.2vw,24px); font-weight:700; line-height:1.4; color:var(--texto);
+  /* Corpo de rótulo, como o "Definição:" do quadro — e não de manchete. */
+  font-size:clamp(13px,3.3vw,19px); font-weight:700; line-height:1.4; color:var(--texto);
 }
 
 /* ---------- Divisão matemática (dialogo1.1) ----------
    Cada parte entra por conta própria: o numerador primeiro, depois o traço
    junto com o denominador. */
+/* -40px sobe a divisão duas linhas do próprio corpo (~20px por linha). */
 #divisao{
-  left:50%; top:50%; transform:translate(-50%,-50%);
+  left:50%; top:50%; transform:translate(-50%, calc(-50% - 40px));
   width:min(86vw,560px); text-align:center; z-index:30;
 }
+#divisao .miolo{ display:inline-block; }
 #divisao .parte{
   font-size:clamp(16px,4.2vw,24px); font-weight:800; color:var(--quente);
   padding:.12em 0; opacity:0; transform:translateY(7px);
@@ -443,13 +446,6 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 }
 .chip.arrastando{ position:fixed; z-index:200; cursor:grabbing; transform:scale(1.06) rotate(-2deg); box-shadow:0 14px 30px rgba(0,0,0,.6); pointer-events:none; }
 .chip.encaixado{ font-size:12.5px; padding:6px 9px; cursor:default; }
-#quizDica{
-  margin-top:10px; font-size:clamp(13px,2.1vw,16px); color:var(--texto2);
-  text-align:center; min-height:1.3em; line-height:1.45; font-weight:600;
-}
-#quizDica.dica-ok{ color:var(--acerto); }
-#quizDica.dica-erro{ color:var(--fogo); }
-
 /* --- Botão de ação dentro do quiz (ex.: "conferir", "clique na cena") --- */
 .quiz-acao{
   margin:12px auto 0; display:block; padding:11px 24px; border-radius:999px; border:0;
@@ -663,7 +659,6 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   #formula .caixa       { font-size:clamp(21px,5.6vw,44px); }
   .badge                { font-size:clamp(14px,3.6vw,17px); }
   .quiz-enunciado       { font-size:clamp(17px,4.6vw,22px); }
-  #quizDica             { font-size:clamp(14px,3.6vw,16px); }
   #quiz3dAviso .caixa   { font-size:clamp(16px,4.2vw,20px); }
   .alt                  { font-size:clamp(15px,4vw,18px); }
 
@@ -713,9 +708,14 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
 
   <!-- Divisão "quantidade de gotas / intervalo de tempo" (dialogo1.1) -->
   <div id="divisao" class="overlay semclique">
-    <div class="parte" id="divNum">Quantidade de gotas</div>
-    <div class="traco" id="divTraco"></div>
-    <div class="parte" id="divDen">intervalo de tempo</div>
+    <!-- O miolo é inline-block: ele encolhe até a largura do texto mais
+         largo, e é isso que faz o traço ter o tamanho de "Quantidade de
+         gotas" em vez de atravessar a tela inteira. -->
+    <div class="miolo">
+      <div class="parte" id="divNum">Quantidade de gotas</div>
+      <div class="traco" id="divTraco"></div>
+      <div class="parte" id="divDen">intervalo de tempo</div>
+    </div>
   </div>
 
   <!-- Painel de gráficos (SVG) -->
@@ -864,7 +864,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.13.0</div>
+  <div id="versao">v1.13.1</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -937,7 +937,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.13.0';
+const VERSAO = 'v1.13.1';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3189,6 +3189,25 @@ function anotarTorneira(chave, txt, cor, z, y, h){
   _anotacoes[chave] = sp;
   return sp;
 }
+/* Altura de mundo das anotações. 0.29 = os 0.42 originais menos 30%. */
+const ANOTACAO_H = .29;
+
+/* Troca o texto de uma anotação já criada. Precisa recriar o sprite porque o
+   canvas é dimensionado ao texto — "10 gotas" e "10 gotas em 2 s" não cabem
+   na mesma pílula. */
+function trocarAnotacao(chave, txt, cor, z, y, h){
+  const velho = _anotacoes[chave];
+  if(velho){
+    if(velho.parent) velho.parent.remove(velho);
+    if(velho.material){
+      if(velho.material.map) velho.material.map.dispose();
+      velho.material.dispose();
+    }
+    delete _anotacoes[chave];
+  }
+  return anotarTorneira(chave, txt, cor, z, y, h);
+}
+
 function limparAnotacoes(){
   Object.keys(_anotacoes).forEach((k)=>{
     const sp = _anotacoes[k];
@@ -4417,8 +4436,7 @@ function montarItemQuiz(item){
     '<div class="quiz-barra"><i style="width:' + ((n-1)/total*100) + '%"></i></div>' +
     (item.figura ? '<div class="quiz-figura">' + item.figura + '</div>' : '') +
     '<p class="quiz-enunciado">' + item.enunciado + '</p>' +
-    '<div id="quizCorpo"></div>' +
-    '<div id="quizDica"></div>';
+    '<div id="quizCorpo"></div>';
 
   const cx = $('quiz');
   cx.innerHTML = ''; cx.appendChild(card);
@@ -4530,20 +4548,15 @@ function responder(item, escolha, botao, container){
   }
 }
 
-/* Toca a faixa do ramo (acerto/erro) e escreve o comentário DENTRO do card
-   (em #quizDica). Usar a legenda global aqui a deixaria atrás do card. */
+/* Toca a faixa do ramo (acerto/erro). O comentário que ficava embaixo das
+   alternativas (#quizDica) saiu inteiro — elemento, CSS e escrita: ele
+   repetia palavra por palavra a narração que começa a tocar logo em seguida.
+   Quem explica a resposta é o áudio. */
 function ramoQuiz(item, acertou){
   const id = acertou ? item.faixaAcerto : item.faixaErro;
-  const dica = $('quizDica');
-  if(dica) dica.className = acertou ? 'dica-ok' : 'dica-erro';
 
   if(id && idxFaixa(id) >= 0){
-    setTimeout(()=>{
-      tocarFaixaPorId(id, { manterQuiz:true });
-      const f = faixaPorId(id);
-      rodarStory([{ t:.1, fn:()=> digitar('quizDica', (acertou ? '✔ ' : '✘ ') + f.texto,
-                                          .3, Math.max(3, (f.dur || 8) - 1.5)) }]);
-    }, acertou ? 900 : 700);
+    setTimeout(()=>{ tocarFaixaPorId(id, { manterQuiz:true }); }, acertou ? 900 : 700);
   } else {
     setTimeout(proximoItemQuiz, 1800);
   }
@@ -4822,14 +4835,16 @@ const EVENTOS = {
     { t:6.0,  fn:()=>{ mostrar('divisao'); $('divNum').classList.add('vis'); } },
     { t:6.7,  fn:()=>{ $('divTraco').classList.add('vis'); $('divDen').classList.add('vis'); } },
 
-    /* Torneira B: pulsa o rótulo e anota a contagem entre ele e o bico. */
+    /* Torneira B: pulsa o rótulo e anota a contagem entre ele e o bico.
+       Os dois pedaços vivem na MESMA caixa — aos 12 s a pílula é reescrita
+       com a frase inteira, em vez de nascer uma segunda etiqueta ao lado. */
     { t:10.4, fn:()=>{ pulsarSprite(torneiras && torneiras.rotB, 2); playSfx('pop', .35); } },
-    { t:11.2, fn:()=> anotarTorneira('b1', '10 gotas', '#ff9d33', -2.35) },
-    { t:12.0, fn:()=> anotarTorneira('b2', 'em 2 s',   '#ff9d33', -3.60) },
+    { t:11.2, fn:()=> anotarTorneira('b', '10 gotas', '#ff9d33', -2.9, undefined, ANOTACAO_H) },
+    { t:12.0, fn:()=> trocarAnotacao('b', '10 gotas em 2 s', '#ff9d33', -2.9, undefined, ANOTACAO_H) },
 
-    /* Torneira A, mesma coreografia, numa anotação só. */
+    /* Torneira A, mesma coreografia, já de uma vez. */
     { t:13.4, fn:()=>{ pulsarSprite(torneiras && torneiras.rotA, 2); playSfx('pop', .35); } },
-    { t:14.8, fn:()=> anotarTorneira('a1', '2 gotas em 2 s', '#6fb7ff', -0.30) }
+    { t:14.8, fn:()=> anotarTorneira('a', '2 gotas em 2 s', '#6fb7ff', -0.30, undefined, ANOTACAO_H) }
   ]),
 
   /* ------------------------------------------------------------------ */
