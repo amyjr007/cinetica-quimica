@@ -864,7 +864,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.13.1</div>
+  <div id="versao">v1.13.2</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -937,7 +937,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.13.1';
+const VERSAO = 'v1.13.2';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -4260,7 +4260,9 @@ const QUIZZES = {
         /* Ao responder — certo ou errado — "Definição:" e o texto branco
            saem de cena pela esquerda e "Velocidade:" é escrito no lugar. */
         aoResponder: ()=> quadroTrocarRotulo('Velocidade:', 700),
-        faixaAcerto:'dialogo1R', faixaErro:'dialogo1W' }
+        faixaAcerto:'dialogo1R', faixaErro:'dialogo1W',
+        /* Segundos do áudio do ramo em que o card some em fade. */
+        fecharCardEm:{ acerto:4, erro:2 } }
     ]
   },
 
@@ -4554,12 +4556,34 @@ function responder(item, escolha, botao, container){
    Quem explica a resposta é o áudio. */
 function ramoQuiz(item, acertou){
   const id = acertou ? item.faixaAcerto : item.faixaErro;
+  if(!(id && idxFaixa(id) >= 0)){ setTimeout(proximoItemQuiz, 1800); return; }
 
-  if(id && idxFaixa(id) >= 0){
-    setTimeout(()=>{ tocarFaixaPorId(id, { manterQuiz:true }); }, acertou ? 900 : 700);
-  } else {
-    setTimeout(proximoItemQuiz, 1800);
-  }
+  /* item.fecharCardEm = { acerto, erro } — segundos do ÁUDIO DO RAMO em que o
+     card (pergunta + alternativas) some em fade. Sem isso ele fica até o fim. */
+  const quando = item.fecharCardEm
+    ? (acertou ? item.fecharCardEm.acerto : item.fecharCardEm.erro) : 0;
+
+  setTimeout(()=>{
+    tocarFaixaPorId(id, { manterQuiz:true });
+
+    /* tocarFaixa monta uma coreografia PADRÃO para faixas sem EVENTOS: ela
+       digita o campo `texto` da faixa na legenda do rodapé. Nos ramos isso
+       vira um segundo feedback escrito, repetindo a narração — limpamos a
+       story e a legenda antes de instalar a nossa. */
+    limparStory();
+    esconder('legenda');
+
+    if(quando > 0) rodarStory([{ t:quando, fn:()=>{
+      esconder('quiz');
+      /* Depois do fade, esvazia o card. Sem isso, proximoItemQuiz() ainda
+         encontraria o elemento no fim do ramo e tocaria o som de "próxima"
+         com a animação de saída — de um card que já não está na tela. */
+      setTimeout(()=>{
+        const c = $('quiz');
+        if(c && !c.classList.contains('show')) c.innerHTML = '';
+      }, 520);
+    } }]);
+  }, acertou ? 900 : 700);
 }
 
 /* ---------------------------- tipo: arrastar ---------------------------- */
