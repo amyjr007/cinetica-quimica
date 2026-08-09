@@ -555,6 +555,13 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   letter-spacing:.13em; text-transform:uppercase; color:var(--rubi);
   margin-bottom:7px; line-height:1;
 }
+/* Leitura do formato da janela: monoespaçada, porque são números para ler e
+   comparar entre aparelhos, não texto de interface. */
+#hudTela{
+  display:block; font-family:ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size:10.5px; line-height:1.45; color:rgba(255,236,232,.72);
+  white-space:nowrap; margin-bottom:7px;
+}
 #hudCamera button{
   display:block; width:100%; padding:9px 12px; border-radius:9px;
   border:1px solid var(--rubi); background:rgba(255,59,48,.14); color:var(--rubi);
@@ -863,11 +870,14 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.18.0</div>
+  <div id="versao">v1.19.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
     <b>Câmera livre</b>
+    <!-- Formato da janela DESTE aparelho. É o número que explica por que o
+         preview e o celular enquadram diferente — ver fovDaTela(). -->
+    <span id="hudTela"></span>
     <button id="btnCopiarCam" type="button">copiar posição</button>
   </div>
   <div id="toast"></div>
@@ -936,7 +946,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.18.0';
+const VERSAO = 'v1.19.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2747,6 +2757,23 @@ function aoRedimensionar(){
   /* Girar o aparelho troca o layout do texto do quadro (coluna larga em
      paisagem, estreita em retrato) — ver LAYOUT_QUADRO. */
   pintarQuadro();
+  mostrarFormatoDaTela();
+}
+
+/* Formato desta janela, no HUD da câmera livre. Existe para responder à
+   pergunta "por que no celular está diferente do preview?" sem adivinhação:
+   é o ASPECTO que decide o FOV, e comparar os dois números lado a lado mostra
+   na hora se as duas telas estão no mesmo enquadramento ou não.
+   O de referência (0.481) fica escrito junto, para servir de régua. */
+function mostrarFormatoDaTela(){
+  const el = $('hudTela');
+  if(!el) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  const a = w / h;
+  el.innerHTML =
+    w + '&times;' + h + '<br>aspecto ' + a.toFixed(3) +
+    ' (ref ' + ASPECT_REF + ')<br>fov ' + fovDaTela().toFixed(1) + '&deg; &middot; ' +
+    (ehRetrato() ? 'retrato' : 'paisagem');
 }
 
 /* -------------------- montagem / desmontagem de cenas -------------------- */
@@ -4009,19 +4036,58 @@ let camTween  = null;
        ndcX = (v . eixoX) / (profundidade * tan(fov/2) * aspecto)
 
    Se tan(fov/2) * aspecto for constante, ndcX é IDÊNTICO em qualquer janela.
-   Ou seja: a composição HORIZONTAL — que é a que importa aqui, com um quadro
-   de 10.5 de largura e duas torneiras lado a lado — fica exatamente igual no
-   celular, no painel do VS Code e no computador.
+   Ou seja: a composição HORIZONTAL fica igual no celular, no painel do VS Code
+   e no computador.
 
-   O que não dá para igualar é a vertical: janelas de formatos diferentes
-   mostram alturas diferentes, e isso é geometria, não ajuste.
+   --------------------------------------------------------------------------
+   POR QUE SÓ ISSO NÃO BASTAVA — o celular cortava por cima
+   --------------------------------------------------------------------------
+   Preservar a horizontal custa a VERTICAL, e a conta é simétrica:
+
+       ndcY = (v . eixoY) / (profundidade * tan(fov/2))
+
+   Com tan(fov/2) = k / aspecto, sai ndcY = (v.eixoY) * aspecto / (k * prof).
+   Ou seja: ndcY é PROPORCIONAL AO ASPECTO. Quanto mais LARGA a janela, mais
+   longe do centro vertical o assunto vai parar.
+
+   E o assunto destas cenas não está no centro: o alvo da câmera do quadro
+   fica bem ABAIXO do quadro, então o quadro já nasce na metade de cima da
+   tela. Numa janela mais larga que a referência ele sobe mais — até sair.
+
+   Era exatamente a diferença entre o preview e o aparelho. O painel do VS
+   Code é uma tira alta e estreita (aspecto ~0.48, coladinho na referência);
+   o celular, com a barra do navegador comendo altura, fica mais LARGO de
+   aspecto (0.55, 0.60...). Mais largo = FOV vertical menor = quadro maior e
+   mais alto. Daí "no preview está ótimo, no celular está com zoom e em cima".
+
+   A REGRA AGORA É "CABER" (contain), e não "preservar a largura":
+
+       tan(fov/2) = tan(FOV_REF/2) * max(1, ASPECT_REF / aspecto)
+
+   O max() põe um PISO na altura visível: nenhuma tela mostra menos vertical
+   do que a de referência. Telas mais estreitas continuam abrindo o FOV para
+   não cortar dos lados (o comportamento de antes); telas mais largas param de
+   fechar e simplesmente ganham cena nas laterais.
+
+   O que isso garante: o que aparece na tela de referência aparece em TODAS.
+   O que isso não garante: ocupar a mesma fração da largura — numa tela larga
+   sobra margem dos lados. É a escolha certa aqui, porque cortar o quadro
+   perde a aula e sobrar margem não perde nada.
+
+   PAISAGEM fica de fora do piso, com a fórmula antiga. Naquele formato o
+   valor cai no limite inferior do clamp (20°) e as constantes CAM_*_DEF de
+   paisagem foram calibradas JÁ COM esse 20° — pôr o piso ali trocaria o FOV
+   de 20 para 48 e desenquadraria tudo o que já está certo.
    -------------------------------------------------------------------------- */
 const ASPECT_REF = 0.481;          // 384x798, o aparelho de referência
 const FOV_REF    = 48;             // FOV vertical NA tela de referência
 
 function fovDaTela(){
   const a = (camera && camera.aspect) ? camera.aspect : ASPECT_REF;
-  const tan = Math.tan(FOV_REF / 2 * Math.PI / 180) * (ASPECT_REF / a);
+  const razao = ASPECT_REF / a;
+  /* O piso (max com 1) só vale em retrato — ver o bloco acima. */
+  const fator = ehRetrato() ? Math.max(1, razao) : razao;
+  const tan = Math.tan(FOV_REF / 2 * Math.PI / 180) * fator;
   return clamp(2 * Math.atan(tan) * 180 / Math.PI, 20, 70);
 }
 
@@ -4153,6 +4219,7 @@ function alternarCamLivre(){
   camLivre = !camLivre;
   $('versao').classList.toggle('livre', camLivre);
   $('hudCamera').classList.toggle('on', camLivre);
+  mostrarFormatoDaTela();
   $('cena3d').classList.toggle('livre', camLivre);
   camTween = null;
   /* Entrar em câmera livre congela o respiro na distância atual: o valor que
