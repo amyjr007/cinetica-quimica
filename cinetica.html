@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.16.0</div>
+  <div id="versao">v1.17.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.16.0';
+const VERSAO = 'v1.17.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3572,12 +3572,21 @@ const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  18.1, target:[0, 3.0, -2.6]
    câmera corta a faixa superior do quadro, e o layout de pintarQuadro() já
    está calibrado para ela (título a ~18% da altura da textura). */
 const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, -0.3] };
-/* Mesma cena em RETRATO — a que o app usa de verdade, capturada no aparelho.
-   O eixo dela é oblíquo: o centro do quadro não cai no centro da tela, e é
-   por isso que o layout retrato de pintarQuadro() tem a coluna deslocada.
-   Ao trocar esta constante, confira as margens do texto: elas são calibradas
-   em par com ela. */
-const CAM_QUADRO_DEF_P = { theta: 0.06, phi: 1.22, dist: 38.4, target:[6.6, -8.7, 0.6] };
+/* Mesma cena em RETRATO — a que o app usa de verdade.
+   O QUADRO É O ASSUNTO aqui, não cenário: a distância é escolhida pelo
+   tamanho que o texto precisa ter para ser lido, não pelo enquadramento da
+   sala. Com dist 38.4 (a versão anterior, um plano aberto da bancada) o
+   quadro ficava com 128px de altura numa tela de 798 e a definição saía com
+   6.5px — ilegível. A 16.2 ela dá 13.5px.
+
+   Não adianta compensar isso com fonte maior: a 111 texels, que é o corpo
+   necessário àquela distância, a lista vira 9 linhas com entrelinha 193 —
+   1544px numa textura de 1024. Ou o quadro é assunto, ou o texto encolhe.
+
+   O eixo é oblíquo (o centro do quadro não cai no centro da tela), e o
+   layout retrato de pintarQuadro() é calibrado em par com esta constante:
+   ao trocá-la, confira as margens do texto. */
+const CAM_QUADRO_DEF_P = { theta: 0.02, phi: 1.29, dist: 16.2, target:[1.5, -0.4, -1.6] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
    do eixo X, então na tela o eixo horizontal é o Z INVERTIDO: quanto mais
