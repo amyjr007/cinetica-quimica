@@ -962,7 +962,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.22.0</div>
+  <div id="versao">v1.23.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -1049,7 +1049,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.22.0';
+const VERSAO = 'v1.23.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2818,7 +2818,7 @@ function iniciar3D(){
   const rim = new THREE.PointLight(0xffe9d6, .30, 34);
   rim.position.set(0, 5.5, -3); scene.add(rim);
 
-  irParaCamera(CAM_GERAL, false);
+  irParaCamera(CAM_CAPA, false);
   window.addEventListener('resize', aoRedimensionar);
   aoRedimensionar();
 }
@@ -4097,6 +4097,25 @@ function prepararArena(op){
      dist  = distância ao alvo      |  target = ponto observado
    ========================================================================== */
 const CAM_GERAL   = { theta: 0.00, phi: 1.16, dist: 24.2, target:[0, 1.4, 0] };
+/* --------------------------------------------------------------------------
+   CAPA — o enquadramento da abertura, antes de tocar em qualquer coisa
+   --------------------------------------------------------------------------
+   Era a CAM_GERAL também. Virou constante própria porque a CAM_GERAL tem um
+   segundo emprego, no 'encerramento', onde ela é uma vista frontal larga que
+   ORBITA (orbitaSuave .04). Orbitar em torno de um alvo tão fora da sala como
+   este varreria a cena de um jeito que não serve àquela faixa — separar é
+   mais barato do que descobrir isso depois.
+
+   Medida no aparelho (384x798, aspecto 0.481, fov 48), com o quadro caindo em:
+     topo (-0.64, 0.85)   base (-0.62, 0.53)
+     esq  (-1.19, 0.69)   dir  (-0.05, 0.69)
+   Ou seja: plano aberto e oblíquo, com o quadro ocupando a metade ESQUERDA da
+   tela e a margem esquerda dele saindo de quadro. O que precisa ser lido —
+   título e créditos, centrados em tituloU .4395 — cai por volta de ndcX -0.69
+   e fica inteiro dentro da tela. Ao mexer nesta constante, é esse o número a
+   conferir, não a borda do quadro.
+   -------------------------------------------------------------------------- */
+const CAM_CAPA    = { theta: 0.13, phi: 1.28, dist: 35.5, target:[6.9,-7.1,3.1] };
 const CAM_BEQUER  = { theta: 0.22, phi: 1.34, dist:  9.2, target:[-2.6, 1.1, .2] };
 const CAM_BEQUER_B= { theta:-0.22, phi: 1.34, dist:  9.2, target:[ 2.6, 1.1, .2] };
 const CAM_DUPLA   = { theta: 0.00, phi: 1.30, dist:  17.2, target:[0, 1.2, .2] };
@@ -4299,26 +4318,34 @@ function tickOrbita(dt){
    tocasse em nada, a câmera dava a volta completa na sala e acabava olhando
    para a parede de trás — a abertura virava um giro de 360°.
 
-   No lugar disso, a câmera fica parada de frente para o QUADRO, atrás da
-   bancada (CAM_GERAL, theta 0), e só respira na profundidade: aproxima-se
-   lentamente do quadro e, chegando ao ponto mais perto, volta. Direção e
-   alvo nunca mudam, então o enquadramento da capa é sempre o mesmo.
+   No lugar disso, a câmera fica PARADA na CAM_CAPA e só respira na
+   profundidade: aproxima-se lentamente da cena e, chegando ao ponto mais
+   perto, volta. Direção e alvo nunca mudam, então o enquadramento da capa é
+   sempre o mesmo — o assunto só cresce e encolhe um tico.
 
    A curva é (1 - cos)/2: vale 0 no início, 1 na metade do período e 0 de
    novo no fim, com velocidade ZERO nos três pontos. Não existe o "solavanco"
    de quando o movimento inverte — a ida vira volta sem que se perceba.
 
-   AMP é a aproximação total em unidades de cena: ~5% de dist, uns 1.3 de
-   24.2. PERIODO é a ida e a volta inteiras. Nesse ritmo a câmera anda meio
-   por cento da distância por segundo: dá vida, mas não chama atenção.
+   A amplitude é uma FRAÇÃO da distância, não um número de unidades. O que se
+   percebe é o quanto a cena cresce, e isso é relativo: 1.3 unidades eram 5%
+   quando a capa estava a 24.2 e viraram 3.7% quando ela foi para 35.5 — a
+   mesma constante, um movimento mais fraco. Com fração, trocar a CAM_CAPA não
+   mexe no ritmo do respiro.
+
+   PERIODO é a ida e a volta inteiras. Nesse ritmo a câmera anda meio por
+   cento da distância por segundo: dá vida, mas não chama atenção.
    -------------------------------------------------------------------------- */
-const RESPIRO_AMP     = 1.3;    // o quanto chega a se aproximar
+const RESPIRO_FRACAO  = .054;   // quanto da distância chega a percorrer
 const RESPIRO_PERIODO = 30;     // segundos de ida + volta
 
 let respiroCam = null;          // { amp, periodo, t } enquanto a capa está no ar
 
-function respiroLigar(amp, periodo){
-  respiroCam = { amp: amp, periodo: periodo, t: 0 };
+/* `fracao` é resolvida em unidades AQUI, contra a distância do momento: o
+   respiro roda sobre um valor fixo, e não sobre um dist que ele mesmo altera
+   a cada frame — o que realimentaria e faria a amplitude escorregar. */
+function respiroLigar(fracao, periodo){
+  respiroCam = { amp: camEstado.dist * fracao, periodo: periodo, t: 0 };
 }
 
 /* Quanto o respiro está tirando da distância neste frame (sempre <= 0). */
@@ -6176,17 +6203,17 @@ function iniciarApp(){
   graficoConcGrade();
 
   /* Cena de abertura já montada por trás da tela de carregamento.
-     A CAPA é uma câmera parada de frente para o quadro, atrás da bancada,
-     só respirando na profundidade (ver RESPIRO DA CAPA). Nada de órbita:
-     girando, a câmera acabava de costas para o assunto. O primeiro
-     irParaCamera() da narração encerra o respiro sem salto, então clicar em
-     COMEÇAR entrega a câmera à coreografia e ele não volta.
+     A CAPA é uma câmera PARADA (ver CAM_CAPA), só respirando na profundidade
+     (ver RESPIRO DA CAPA). Nada de órbita: girando, a câmera acabava de costas
+     para o assunto. O primeiro irParaCamera() da narração encerra o respiro
+     sem salto, então clicar em COMEÇAR entrega a câmera à coreografia e ele
+     não volta.
      (As faixas 'colisoes' e 'encerramento' têm órbita PRÓPRIA, de propósito:
      a arena é uma caixa 3D, que só lê como volume se a câmera se mexer.) */
   prepararBancada({ taxaA:.3, taxaB:.45 });
-  irParaCamera(CAM_GERAL, false);
+  irParaCamera(CAM_CAPA, false);
   orbitaSuave = 0;
-  respiroLigar(RESPIRO_AMP, RESPIRO_PERIODO);
+  respiroLigar(RESPIRO_FRACAO, RESPIRO_PERIODO);
 
   animar();
 
