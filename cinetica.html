@@ -614,6 +614,14 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
   font-size:10.5px; line-height:1.45; color:rgba(255,236,232,.72);
   white-space:nowrap; margin-bottom:7px;
 }
+/* Dica de pan por mouse: só onde existe mouse. `pointer: coarse` é o dedo. */
+#hudDica{
+  display:block; font-family:var(--fonte); font-size:10px; font-weight:700;
+  letter-spacing:.04em; color:rgba(255,157,51,.80);
+  white-space:nowrap; margin-bottom:7px;
+}
+@media (pointer: coarse){ #hudDica{ display:none; } }
+
 #hudCamera button{
   display:block; width:100%; padding:9px 12px; border-radius:9px;
   border:1px solid var(--rubi); background:rgba(255,59,48,.14); color:var(--rubi);
@@ -954,7 +962,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.21.0</div>
+  <div id="versao">v1.22.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -962,6 +970,9 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
     <!-- Formato da janela DESTE aparelho. É o número que explica por que o
          preview e o celular enquadram diferente — ver fovDaTela(). -->
     <span id="hudTela"></span>
+    <!-- Lembrete do pan com mouse. Some sozinho em tela de toque, onde Ctrl
+         não existe e o pan é de dois dedos — ver a media query no CSS. -->
+    <span id="hudDica">ctrl + arrastar = pan</span>
     <button id="btnCopiarCam" type="button">copiar posição</button>
   </div>
   <div id="toast"></div>
@@ -1038,7 +1049,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.21.0';
+const VERSAO = 'v1.22.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -4336,6 +4347,9 @@ function tickRespiro(dt){
    LIGAR/DESLIGAR:  tecla L  (ou toque no selo de versão)
    GESTOS (mesmo código para mouse e toque, via Pointer Events):
      1 dedo / arrastar ....... girar em torno do alvo (theta / phi)
+     Ctrl + arrastar ......... mover o alvo no plano da tela (pan) — é o pan
+                               de dois dedos para quem tem mouse, já que no
+                               computador não existe segundo dedo
      2 dedos ................. mover o alvo no plano da tela (pan)
      pinça abrindo ........... vai PARA FRENTE (aproxima)
      pinça fechando .......... vai PARA TRÁS (afasta)
@@ -4551,8 +4565,10 @@ function ligarControlesCamLivre(){
     ponteiros.set(e.pointerId, { x:e.clientX, y:e.clientY });
     rearmar();
 
-    /* 1 dedo parado por 3s = copiar. Com 2 dedos é pan/pinça, então cancela. */
-    if(ponteiros.size === 1) iniciarSegurar(e.clientX, e.clientY);
+    /* 1 dedo parado por 3s = copiar. Com 2 dedos é pan/pinça, então cancela.
+       Com Ctrl também: Ctrl+arrastar é pan, e um Ctrl+clique parado copiando
+       a câmera sem querer seria uma surpresa desagradável no meio do ajuste. */
+    if(ponteiros.size === 1 && !e.ctrlKey) iniciarSegurar(e.clientX, e.clientY);
     else cancelarSegurar();
   });
 
@@ -4577,9 +4593,20 @@ function ligarControlesCamLivre(){
     const dy = c.y - centroAnterior.y;
 
     if(ponteiros.size === 1){
-      /* --- 1 dedo: ÓRBITA --- */
-      camEstado.theta -= dx * .0065;
-      camEstado.phi    = clamp(camEstado.phi - dy * .0055, .06, Math.PI - .06);
+      if(e.ctrlKey){
+        /* --- Ctrl + arrastar: PAN com um ponteiro só ---
+           No aparelho o pan é de dois dedos, mas com mouse não existe segundo
+           dedo — e ajustar enquadramento sem poder mover o alvo é girar em
+           torno do lugar errado. Ctrl é lido A CADA movimento, não no clique:
+           dá para começar girando, segurar Ctrl para reposicionar o alvo e
+           soltar para voltar a girar, no mesmo arrasto. Como o pan e a órbita
+           trabalham sobre o DELTA do ponteiro, a troca no meio não dá salto. */
+        panCamera(dx, dy);
+      } else {
+        /* --- 1 dedo: ÓRBITA --- */
+        camEstado.theta -= dx * .0065;
+        camEstado.phi    = clamp(camEstado.phi - dy * .0055, .06, Math.PI - .06);
+      }
     } else {
       /* --- 2+ dedos: PAN pelo centroide + PINÇA pela abertura --- */
       panCamera(dx, dy);
