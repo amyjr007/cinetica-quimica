@@ -863,7 +863,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.14.3</div>
+  <div id="versao">v1.15.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -936,7 +936,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.14.3';
+const VERSAO = 'v1.15.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -3566,20 +3566,11 @@ const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  18.1, target:[0, 3.0, -2.6]
    câmera corta a faixa superior do quadro, e o layout de pintarQuadro() já
    está calibrado para ela (título a ~18% da altura da textura). */
 const CAM_QUADRO_DEF = { theta:-0.23, phi: 1.27, dist:  5.7, target:[-0.8, 2.4, -0.3] };
-/* Mesma cena em RETRATO. Não dá para reaproveitar a de cima: a tela em pé é
-   estreita e o quadro tem 10.5 de largura — fatorRetrato() só afasta a câmera
-   pelo MESMO eixo, então o texto continuaria saindo pelas laterais (e ainda
-   fora de centro, porque o eixo é oblíquo).
-
-   ATENÇÃO ao mexer: estes números SÓ funcionam em retrato. Com fatorRetrato
-   valendo 1 (paisagem), a câmera cairia em y = -0.46 — abaixo do tampo — e o
-   quadro sairia inteiro por cima da tela. É por isso que existem duas
-   constantes e um camDefinicao() escolhendo entre elas.
-
-   O eixo é oblíquo: o centro do quadro (x = 0) cai 1.75 à ESQUERDA do eixo da
-   câmera, em qualquer distância. Por isso o layout retrato de pintarQuadro()
-   tem a coluna deslocada para a direita — sem isso a margem esquerda do texto
-   nasce colada na borda da tela. */
+/* Mesma cena em RETRATO — a que o app usa de verdade, capturada no aparelho.
+   O eixo dela é oblíquo: o centro do quadro não cai no centro da tela, e é
+   por isso que o layout retrato de pintarQuadro() tem a coluna deslocada.
+   Ao trocar esta constante, confira as margens do texto: elas são calibradas
+   em par com ela. */
 const CAM_QUADRO_DEF_P = { theta: 0.06, phi: 1.22, dist: 38.4, target:[6.6, -8.7, 0.6] };
 function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF; }
 /* Vista lateral das duas torneiras (dialogo1, a partir de 20 s). Olha ao longo
@@ -3590,14 +3581,11 @@ function camDefinicao(){ return ehRetrato() ? CAM_QUADRO_DEF_P : CAM_QUADRO_DEF;
    as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
    Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
    um pouco acima do topo da tela. */
-/* Calculada a partir do PRINT do aparelho, não copiada da câmera livre.
-   O valor copiado (dist 26.0, target [-4.1,-5.0,-5.1]) tinha sido pego com o
-   movimento de 3 s ainda correndo: o diagnóstico do próprio app mediu, nele,
-   os rótulos em (-0.91, 0.65) e (-0.43, 0.65) — os dois espremidos no terço
-   esquerdo, bem diferente do print. Estes números reproduzem o print:
-   rótulos em -0.72 e +0.70, na altura -0.05, contra -0.74/+0.72 e -0.05
-   medidos na imagem. */
-const CAM_TORNEIRAS = { theta: 1.47, phi: 1.33, dist:  8.5, target:[-5.4, 2.4, -1.6] };
+/* Capturada no aparelho com a câmera livre. Eu tinha trocado por um valor
+   deduzido do print (dist 8.5) e ficou pior: print é imagem, e a essa altura
+   não dava para saber se ele fora tirado com o movimento de 3 s ainda
+   correndo. Valor copiado do app ganha de leitura de imagem. */
+const CAM_TORNEIRAS = { theta: 1.47, phi: 1.33, dist: 26.0, target:[-4.1, -5.0, -5.1] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  8.8, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 21, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
@@ -3625,16 +3613,27 @@ let camTween  = null;
    Consequência: as constantes herdadas da fase "paisagem" foram multiplicadas
    por 2.1, para manterem no celular o enquadramento que já tinham.
    -------------------------------------------------------------------------- */
-const ASPECT_BASE = 0.46;
-function fatorRetrato(){
+const ASPECT_REF = 0.481;          // 384x798, o aparelho de referência
+
+/* O FOV da câmera é VERTICAL e fixo. Duas janelas à mesma distância mostram,
+   por isso, a mesma ALTURA de cena e larguras diferentes — e é a largura que
+   define o enquadramento aqui: o quadro tem 10.5 de largura, as torneiras
+   ficam lado a lado. Era essa a diferença que sobrava entre o celular e o
+   painel do VS Code (aspecto 0.77): o painel mostrava 1.6x mais largura e
+   tudo parecia afastado.
+
+   Este fator mantém a LARGURA VISÍVEL constante: janela mais gorda aproxima,
+   mais estreita afasta. No aparelho de referência ele vale 1, então as
+   constantes CAM_* continuam sendo o que se vê no celular — e o preview passa
+   a mostrar o mesmo enquadramento, o que o torna confiável para ajustar. */
+function fatorEnquadre(){
   if(!camera) return 1;
-  const a = camera.aspect;
-  return a >= ASPECT_BASE ? 1 : clamp(ASPECT_BASE / a, 1, 1.6);
+  return clamp(ASPECT_REF / camera.aspect, .45, 2.2);
 }
 
 function aplicarCamera(){
   const s = camEstado;
-  const d = s.dist * fatorRetrato();
+  const d = s.dist * fatorEnquadre();
   const sp = Math.sin(s.phi), cp = Math.cos(s.phi);
   camera.position.set(
     s.target.x + d * sp * Math.sin(s.theta),
@@ -3744,8 +3743,8 @@ function textoCamera(){
   l.push('tela ' + window.innerWidth + 'x' + window.innerHeight +
          '  dpr ' + (window.devicePixelRatio || 1).toFixed(2) +
          '  aspecto ' + (camera ? camera.aspect.toFixed(3) : '—') +
-         '  fator ' + fatorRetrato().toFixed(2) +
-         '  dist efetiva ' + (s.dist * fatorRetrato()).toFixed(1));
+         '  fator ' + fatorEnquadre().toFixed(2) +
+         '  dist efetiva ' + (s.dist * fatorEnquadre()).toFixed(1));
   if(torneiras){
     l.push('rotulo A ' + ndcDe(torneiras.rotA) + '   rotulo B ' + ndcDe(torneiras.rotB));
     l.push('anota A ' + ndcDe(_anotacoes.a) + '   anota B ' + ndcDe(_anotacoes.b));
@@ -3811,7 +3810,7 @@ function toast(msg, ms, selecionavel){
 const _vDir = new THREE.Vector3();
 const _vDireita = new THREE.Vector3(), _vCima = new THREE.Vector3();
 function panCamera(dxPx, dyPx){
-  const distEfetiva = camEstado.dist * fatorRetrato();
+  const distEfetiva = camEstado.dist * fatorEnquadre();
   const alturaVisivel = 2 * distEfetiva * Math.tan(camera.fov * Math.PI / 360);
   const escala = alturaVisivel / Math.max(1, window.innerHeight);
 
