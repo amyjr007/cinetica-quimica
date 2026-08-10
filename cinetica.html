@@ -214,6 +214,40 @@ canvas#cena3d{ position:fixed; inset:0; display:block; z-index:1; }
 }
 #divisao .traco.vis{ width:100%; }
 
+/* ---------- Equação do gotejamento (dialogo1.2) ----------
+   Fica 1.5 linha acima de onde a divisão estava: -70px contra os -40px dela
+   (a linha do corpo dá ~20px no celular). */
+#equacao{
+  left:50%; top:50%; transform:translate(-50%, calc(-50% - 70px));
+  width:min(92vw,600px); text-align:center; z-index:31;
+}
+/* O "quadrado" que destaca a fórmula. */
+#equacao .caixaEq{
+  display:inline-flex; align-items:center; gap:.5em;
+  padding:.75em 1.1em; border-radius:14px;
+  background:rgba(26,11,10,.92); border:2px solid var(--quente);
+  box-shadow:0 0 26px rgba(255,157,51,.22), var(--sombra);
+  font-size:clamp(15px,4vw,23px); font-weight:800; color:var(--quente);
+  line-height:1.25;
+}
+#equacao sub{ font-size:.46em; vertical-align:-.15em; letter-spacing:.02em; }
+
+/* Par fantasma/tinta: o fantasma reserva a largura final, a tinta escreve. */
+#equacao .escrita{ position:relative; display:inline-block; }
+#equacao .fantasma{ visibility:hidden; font-style:normal; }
+#equacao .tinta{
+  position:absolute; left:0; top:0; white-space:nowrap; font-style:normal;
+}
+
+/* A fração empilha numerador, traço e denominador. */
+#equacao .fracao{ display:inline-flex; flex-direction:column; align-items:center; }
+#equacao .tracoEq{
+  display:block; height:3px; width:0; margin:.28em 0; border-radius:3px;
+  background:linear-gradient(90deg,var(--rubi),var(--quente),var(--rubi));
+  transition:width .5s cubic-bezier(.4,.05,.2,1);
+}
+#equacao .tracoEq.vis{ width:100%; }
+
 /* ---------- Cartão de fórmula ---------- */
 #formula{
   left:50%; top:16%; transform:translate(-50%,-14px) scale(.9);
@@ -816,6 +850,26 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
     </div>
   </div>
 
+  <!-- Equação do gotejamento (dialogo1.2), ESCRITA na tela peça por peça.
+       Cada trecho é um par: um "fantasma" invisível com o texto final, que
+       reserva o espaço, e a "tinta" por cima, que a máquina de escrever vai
+       preenchendo. Sem o fantasma a caixa cresceria a cada letra e o que já
+       estava escrito escorregaria para o lado. -->
+  <div id="equacao" class="overlay semclique">
+    <div class="caixaEq">
+      <span class="parte">
+        <span class="escrita"><i class="fantasma">V</i><i class="tinta" id="eqVtxt"></i></span><sub
+          class="escrita"><i class="fantasma">gotejamento</i><i class="tinta" id="eqVsub"></i></sub>
+      </span>
+      <span class="parte escrita"><i class="fantasma">=</i><i class="tinta" id="eqIgualTxt"></i></span>
+      <span class="fracao">
+        <span class="escrita"><i class="fantasma">quantidade de gotas</i><i class="tinta" id="eqNumTxt"></i></span>
+        <span class="tracoEq" id="eqTraco"></span>
+        <span class="escrita"><i class="fantasma">intervalo de tempo</i><i class="tinta" id="eqDenTxt"></i></span>
+      </span>
+    </div>
+  </div>
+
   <!-- Painel de gráficos (SVG) -->
   <div id="painelGrafico" class="overlay semclique">
     <div class="moldura">
@@ -1130,6 +1184,9 @@ const FAIXAS = [
   { id:'dialogo1_1', arquivo:'audios/dialogo1.1.mp3', titulo:'Como medir a velocidade', dur:19,
     texto:'Para comparar as duas, contamos quantas gotas caem num mesmo intervalo de tempo.' },
 
+  { id:'dialogo1_2', arquivo:'audios/dialogo1.2.mp3', titulo:'A equação do gotejamento', dur:35,
+    texto:'A velocidade de gotejamento é a quantidade de gotas dividida pelo intervalo de tempo.' },
+
   { id:'velocidade', arquivo:'audios/velocidade.mp3', titulo:'Velocidade de reação', dur:42,
     texto:'Velocidade média de reação é o quanto a concentração muda dividido pelo tempo gasto: v = ΔC / Δt, em mol por litro por segundo.' },
 
@@ -1202,7 +1259,8 @@ const CENAS_PERSISTENTES = [
 
 /* Que cena 3D cada faixa usa. 'bancada' | 'arena' | 'quadro' */
 const CENA_DA_FAIXA = {
-  dialogo1:'bancada', dialogo1R:'bancada', dialogo1W:'bancada', dialogo1_1:'bancada',
+  dialogo1:'bancada', dialogo1R:'bancada', dialogo1W:'bancada',
+  dialogo1_1:'bancada', dialogo1_2:'bancada',
   velocidade:'quadro', colisoes:'arena', ativacao:'quadro',
   fator_conc:'bancada', fator_superficie:'bancada', fator_temp:'bancada',
   fator_catalisador:'bancada',
@@ -1248,7 +1306,7 @@ function esconder(id){ const e = $(id); if(e) e.classList.remove('show'); }
 
 /* Todos os overlays que somem na troca de faixa. */
 const OVERLAYS = ['titulo','formula','badges','legenda','painelGrafico','termometro',
-                  'quiz','quiz3dAviso','play','frase','divisao'];
+                  'quiz','quiz3dAviso','play','frase','divisao','equacao'];
 function esconderOverlays(){
   OVERLAYS.forEach(esconder);
   const pf = $('painelFormula'); if(pf) pf.classList.remove('vis');
@@ -1324,6 +1382,16 @@ function zerarDivisao(){
   ['divNum','divTraco','divDen'].forEach((id)=>{
     const e = $(id); if(e) e.classList.remove('vis');
   });
+}
+
+/* Idem para a equação: apaga a tinta e recolhe o traço. limparDigitacoes()
+   só esvazia a fila da máquina de escrever; o que já foi escrito continua na
+   tela até alguém limpar. */
+function zerarEquacao(){
+  ['eqVtxt','eqVsub','eqIgualTxt','eqNumTxt','eqDenTxt'].forEach((id)=>{
+    const e = $(id); if(e) e.textContent = '';
+  });
+  const t = $('eqTraco'); if(t) t.classList.remove('vis');
 }
 
 /* ---------- Badges de conceito ---------- */
@@ -5644,6 +5712,31 @@ const EVENTOS = {
     /* Torneira A, mesma coreografia, já de uma vez. */
     { t:13.4, fn:()=>{ pulsarSprite(torneiras && torneiras.rotA, 2); playSfx('pop', .35); } },
     { t:14.8, fn:()=> anotarTorneira('a', '2 gotas em 2 s', '#6fb7ff', ANOTACAO_ZA, undefined, ANOTACAO_H) }
+  ]),
+
+  /* ------------------------------------------------------------------ */
+  /* 1c. DIALOGO1.2 — a equação da velocidade de gotejamento             */
+  /* ------------------------------------------------------------------ */
+  /* Sem cue de câmera: continua no plano das torneiras.
+     A equação é ESCRITA peça por peça, com a mesma máquina de escrever das
+     legendas — por isso os tempos vêm em pares (começo e fim do traçado). */
+  dialogo1_2: () => rodarStory([
+    /* A divisão anterior sai de cena logo no começo. */
+    { t:0.0,  fn:()=>{ esconder('divisao'); zerarEquacao(); } },
+
+    /* 3 s: entra a caixa e o V é escrito, com o subscrito logo em seguida. */
+    { t:3.0,  fn:()=>{ mostrar('equacao');
+                       digitar('eqVtxt', 'V', 3.0, 3.2);
+                       digitar('eqVsub', 'gotejamento', 3.2, 4.3);
+                       playSfx('pop', .3); } },
+
+    /* 8.4 s: o igual e o numerador. */
+    { t:8.4,  fn:()=>{ digitar('eqIgualTxt', '=', 8.4, 8.6);
+                       digitar('eqNumTxt', 'quantidade de gotas', 8.7, 10.4); } },
+
+    /* 11 s: o traço é riscado e o denominador escrito embaixo. */
+    { t:11.0, fn:()=>{ $('eqTraco').classList.add('vis');
+                       digitar('eqDenTxt', 'intervalo de tempo', 11.4, 13.0); } }
   ]),
 
   /* ------------------------------------------------------------------ */
