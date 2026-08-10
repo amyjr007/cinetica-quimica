@@ -3740,8 +3740,8 @@ function mostrarTorneiras(){
   const B = criarTorneira({ x:TORNEIRA_X, z:-2.9, para: 1, taxa:5, corGota:CORES.quente });
   g.add(A.grupo); g.add(B.grupo);
 
-  const rotA = criarRotulo3D('A', TORNEIRA_X, 2.25, -0.3, '#6fb7ff');
-  const rotB = criarRotulo3D('B', TORNEIRA_X, 2.25, -2.9, '#ff9d33');
+  const rotA = criarRotulo3D('A', TORNEIRA_X, ROTULO_Y, -0.3, '#6fb7ff', ROTULO_TAM);
+  const rotB = criarRotulo3D('B', TORNEIRA_X, ROTULO_Y, -2.9, '#ff9d33', ROTULO_TAM);
   g.add(rotA); g.add(rotB);
 
   raizCena.add(g);
@@ -3795,7 +3795,7 @@ function criarTexto3D(txt, x, y, z, cor, alturaMundo){
 const _anotacoes = {};
 function anotarTorneira(chave, txt, cor, z, y, h){
   if(!torneiras || _anotacoes[chave]) return null;
-  const sp = criarTexto3D(txt, TORNEIRA_X, (y === undefined ? 1.92 : y), z, cor, h);
+  const sp = criarTexto3D(txt, TORNEIRA_X, (y === undefined ? ANOTACAO_Y : y), z, cor, h);
   torneiras.grupo.add(sp);
   _anotacoes[chave] = sp;
   return sp;
@@ -3812,6 +3812,19 @@ const ANOTACAO_H = .23;
    sua torneira, mas sobra folga nas pontas e um vão de 0.26 entre elas. */
 const ANOTACAO_ZA = -0.75;
 const ANOTACAO_ZB = -2.45;
+
+/* --------------------------------------------------------------------------
+   ALTURAS DA PILHA sobre cada torneira. As três medidas andam juntas:
+     1.614  topo do volante (y do volante 1.58 + o tubo do toro, 0.034)
+     ROTULO_Y     selo quadrado, encostando nesse topo
+     ANOTACAO_Y   anotação, logo ACIMA do selo
+   A anotação subiu porque o selo desceu: ela ficava no vão entre o selo e a
+   torneira, e esse vão deixou de existir.
+   -------------------------------------------------------------------------- */
+const TORNEIRA_TOPO = 1.614;
+const ROTULO_TAM = .36;
+const ROTULO_Y   = TORNEIRA_TOPO + ROTULO_TAM / 2;
+const ANOTACAO_Y = ROTULO_Y + ROTULO_TAM / 2 + ANOTACAO_H / 2 + .04;
 
 /* Troca o texto de uma anotação já criada. Precisa recriar o sprite porque o
    canvas é dimensionado ao texto — "10 gotas" e "10 gotas em 2 s" não cabem
@@ -3867,18 +3880,29 @@ function tickPulsos(dt){
 }
 
 /* Sprite de texto (rótulo A / B / dicas na cena). */
-function criarRotulo3D(txt, x, y, z, cor){
-  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+/* Selo QUADRADO com uma letra. `tam` é o lado, em unidades de mundo. */
+function criarRotulo3D(txt, x, y, z, cor, tam){
+  const N = 128, m = 8;                       // canvas quadrado = selo quadrado
+  const cv = document.createElement('canvas'); cv.width = cv.height = N;
   const c = cv.getContext('2d');
   c.fillStyle = 'rgba(20,20,19,.85)';
-  c.beginPath(); c.roundRect ? c.roundRect(28,18,200,92,26) : c.rect(28,18,200,92); c.fill();
+  c.beginPath();
+  if(c.roundRect) c.roundRect(m, m, N-2*m, N-2*m, 24); else c.rect(m, m, N-2*m, N-2*m);
+  c.fill();
   c.strokeStyle = cor; c.lineWidth = 5; c.stroke();
-  c.fillStyle = cor; c.font = 'bold 62px Segoe UI, system-ui, sans-serif';
+  c.fillStyle = cor; c.font = 'bold 58px Segoe UI, system-ui, sans-serif';
   c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(txt, 128, 66);
+  c.fillText(txt, N/2, N/2 + 2);
+
   const tex = new THREE.CanvasTexture(cv);
+  /* Sem mipmap, como o quadro e as anotações: nesta escala o selo é
+     minificado e o filtro trilinear borraria a letra. */
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
-  sp.scale.set(.9, .45, 1); sp.position.set(x, y, z);
+  const s = tam || ROTULO_TAM;
+  sp.scale.set(s, s, 1); sp.position.set(x, y, z);
   sp.renderOrder = 5;
   return sp;
 }
