@@ -75,16 +75,38 @@ html,body{
    inteiro usa calc(var(--vw)*N) no lugar de Nvw justamente porque vw/vh
    seguiriam a janela e escapariam da moldura — num monitor largo, um
    "92vw" viraria 1760px dentro de uma caixa de 519px de largura.
+
+   --------------------------------------------------------------------------
+   TAMANHO FIXO, E NÃO SÓ FORMATO FIXO
+   --------------------------------------------------------------------------
+   Fixar o ASPECTO igualou o 3D — que depende só de aspecto e FOV — e parou
+   por aí. A interface continuou diferente, porque quase todo texto é
+   clamp(min_px, N * --vw, max_px): numa moldura larga o termo do meio cresce,
+   bate no `max` em px e trava. O título, por exemplo, é clamp(15px, 4.2·--vw,
+   22px) — a 384 de largura dá 16px (4.2% da moldura), a 700 dá 22px travados
+   (3.1%). Mesma cena 3D, tipografia proporcionalmente menor. Era essa a
+   diferença que sobrava entre o preview e o aparelho.
+
+   Agora a moldura tem TAMANHO fixo, 384x798 — a medida real do aparelho — e a
+   caixa inteira é escalada para caber na janela. Tudo lá dentro passa a
+   existir num único sistema de coordenadas: os mesmos --vw, os mesmos px, os
+   mesmos clamps, o mesmo canvas. O que muda entre telas é só o fator de
+   ampliação da imagem pronta, e ampliação uniforme não muda composição.
+
+   A escala usa a propriedade `scale`, NÃO `transform: scale()`. tremerTela()
+   escreve transform próprio e apagaria a escala junto — `scale` é propriedade
+   separada, sobrevive ao tremor, e também serve de bloco contendor para os
+   descendentes fixed.
    -------------------------------------------------------------------------- */
 #app{
   position:fixed; inset:0; overflow:hidden;
   transform:translateZ(0);
+  transform-origin:50% 50%;      /* a escala cresce a partir do centro da caixa */
   background:var(--bg);
-  /* Valores de partida = 1% de 390x844, o aparelho de referência.
-     ajustarMoldura() sobrescreve no primeiro frame. Existem porque, sem eles,
-     todo calc(var(--vw)*N) seria inválido até o JS rodar — e uma declaração
-     inválida derruba a regra inteira, não só o número. */
-  --vw:3.90px; --vh:8.44px;
+  /* Valores de partida = 1% de 384x798. ajustarMoldura() reescreve no primeiro
+     frame, mas eles precisam existir antes: sem valor, todo calc(var(--vw)*N)
+     seria inválido, e uma declaração inválida derruba a regra inteira. */
+  --vw:3.84px; --vh:7.98px;
 }
 /* .moldada solta o inset para o JS mandar em left/top/width/height. Fica
    sempre ligada — o inset:0 acima só vale no instante antes do primeiro
@@ -1016,7 +1038,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.24.0</div>
+  <div id="versao">v1.25.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -1103,7 +1125,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.24.0';
+const VERSAO = 'v1.25.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -2806,15 +2828,17 @@ function metal(op){
    O teto de 3 é o botão de PERFORMANCE desta cena: cada degrau custa o
    quadrado (de 2 para 3 são 2.25x mais pixels a sombrear). Se algum aparelho
    engasgar, é o primeiro número a baixar.
+
+   Quem usa este teto é dprMoldura(), lá na seção da moldura: a conta precisa
+   levar em conta a AMPLIAÇÃO da caixa, então o teto mora aqui e a fórmula lá.
    -------------------------------------------------------------------------- */
 const DPR_TETO = 3;
-function dprCena(){ return Math.min(DPR_TETO, window.devicePixelRatio || 1); }
 
 /* --------------------------- inicialização 3D --------------------------- */
 function iniciar3D(){
   const cv = $('cena3d');
   renderer = new THREE.WebGLRenderer({ canvas:cv, antialias:true, alpha:false });
-  renderer.setPixelRatio(dprCena());
+  renderer.setPixelRatio(dprMoldura());
   renderer.setSize(telaW(), telaH(), false);
   /* Sombras: é o que dava mais falta. Sem elas os béqueres pareciam colados
      na bancada por Photoshop, sem peso e sem contato com o tampo.
@@ -2899,75 +2923,107 @@ function iniciar3D(){
    o raycast do quiz 3D leem todos daqui, então não há como um deles ficar
    medindo a janela e desalinhar dos outros.
 
-   A MOLDURA VALE SEMPRE, e isso é o ponto. A primeira versão só moldava
-   janelas mais largas que 0.75, achando que telas em pé já eram equivalentes
-   entre si. Não são: o painel do VS Code em pé dá ~0.55 e o celular ~0.46, os
-   dois passavam em cheio, cada um com o seu aspecto, e o enquadramento
-   divergia de novo — exatamente o que a moldura existia para impedir.
+   A MOLDURA TEM TAMANHO FIXO, não só formato fixo. Foram duas etapas, e vale
+   registrar as duas porque a primeira parecia suficiente e não era:
 
-   Agora a caixa tem SEMPRE o aspecto de referência, a maior que couber na
-   janela, e é o aspecto que deixa de ser variável: em qualquer tela a câmera
-   recebe 0.481 e o FOV dá FOV_REF cravado. O preview e o aparelho passam a
-   mostrar a mesma coisa por construção, não por coincidência de proporção.
+   1) Fixar o ASPECTO. Antes, cada tela passava em cheio com a sua proporção
+      (painel do VS Code ~0.55, celular ~0.46) e o enquadramento 3D divergia.
+      Com o aspecto travado em ASPECT_REF, a câmera recebe 0.481 em qualquer
+      tela e o FOV dá FOV_REF cravado. Isso resolveu o 3D — que depende só de
+      aspecto e FOV — e só o 3D.
 
-   O preço são as barras. Num celular em pé (0.46) a caixa perde ~4% de
-   altura, invisível. Num navegador com a barra de endereço aberta (~0.60) ela
-   perde largura de verdade — instalar como app (fullscreen) devolve isso.
+   2) Fixar o TAMANHO. A interface continuou diferente, porque quase todo
+      texto é clamp(min_px, N * --vw, max_px): numa moldura larga o termo do
+      meio bate no `max` em px e trava, e a tipografia encolhe em relação à
+      caixa. Com a caixa em TELA_REF_W x TELA_REF_H exatos, --vw, os px, os
+      clamps e o canvas passam a viver num sistema de coordenadas único.
+
+   A caixa é então ESCALADA para caber na janela. Ampliação uniforme de uma
+   imagem pronta não muda composição: o preview vira o aparelho ampliado, e
+   não outro layout. TELA_REF_W/H são a medida real do aparelho de referência,
+   e TELA_REF_W/TELA_REF_H = ASPECT_REF — as três constantes têm de continuar
+   coerentes entre si.
    -------------------------------------------------------------------------- */
-/* A moldura É a tela de referência: usamos ASPECT_REF direto, DENTRO das
-   funções. No topo do script não daria — ASPECT_REF é um const declarado lá
-   na seção da câmera, e lê-lo aqui em cima cairia na zona morta temporal. */
+const TELA_REF_W = 384, TELA_REF_H = 798;   // 384/798 = 0.4812 = ASPECT_REF
+let escalaMoldura = 1;                       // fator de ampliação em vigor
 
-function telaW(){ const m = $('app'); return (m && m.clientWidth)  || window.innerWidth; }
-function telaH(){ const m = $('app'); return (m && m.clientHeight) || window.innerHeight; }
+/* Sempre TELA_REF_*: são constantes, mas passam por aqui para que todo mundo
+   leia o tamanho do mesmo lugar. O clientWidth serve de conferência — se
+   algum dia divergir, é sinal de que algo mexeu no CSS da moldura. */
+function telaW(){ const m = $('app'); return (m && m.clientWidth)  || TELA_REF_W; }
+function telaH(){ const m = $('app'); return (m && m.clientHeight) || TELA_REF_H; }
+
+/* Um ponto do mouse/dedo, que vem em coordenadas da JANELA, traduzido para
+   coordenadas da MOLDURA. São duas correções: descontar o canto da caixa (ela
+   está centrada, então numa janela larga há uma faixa à esquerda) e desfazer a
+   ampliação (um arrasto de 100px na tela são 100/escala px de moldura).
+   Sem isto, num computador o toque cairia longe do que se vê, os gestos da
+   câmera livre teriam sensibilidade diferente da do aparelho, e o anel de
+   "segurar para copiar" nasceria fora do dedo. */
+function pontoNaMoldura(clientX, clientY){
+  const m = $('app');
+  if(!m) return { x: clientX, y: clientY };
+  const r = m.getBoundingClientRect();
+  const k = escalaMoldura || 1;
+  return { x: (clientX - r.left) / k, y: (clientY - r.top) / k };
+}
 
 function ajustarMoldura(){
   const m = $('app');
   if(!m) return;
   const w = window.innerWidth, h = window.innerHeight;
 
-  /* A MAIOR caixa em ASPECT_REF que cabe na janela. Primeiro tentamos usar a
-     altura inteira; se aí a caixa ficar mais larga que a janela, quem manda é
-     a largura. É o "contain" clássico, e é o que torna o aspecto uma
-     constante em vez de uma variável. */
-  let ah = h, aw = Math.round(h * ASPECT_REF);
-  if(aw > w){ aw = w; ah = Math.round(w / ASPECT_REF); }
+  /* Maior ampliação que ainda cabe na janela, nos dois eixos. */
+  escalaMoldura = Math.min(w / TELA_REF_W, h / TELA_REF_H);
 
-  /* Centrada por left/top em px — nunca por transform, que é do tremor
-     (ver o bloco da moldura no CSS). */
   m.classList.add('moldada');
-  m.style.width  = aw + 'px';                       m.style.height = ah + 'px';
-  m.style.left   = Math.round((w - aw) / 2) + 'px'; m.style.top    = Math.round((h - ah) / 2) + 'px';
+  m.style.width  = TELA_REF_W + 'px';
+  m.style.height = TELA_REF_H + 'px';
+  /* left/top centram a caixa NÃO ampliada; como a origem da escala é o centro
+     (transform-origin no CSS), ela continua centrada depois de ampliada. */
+  m.style.left   = Math.round((w - TELA_REF_W) / 2) + 'px';
+  m.style.top    = Math.round((h - TELA_REF_H) / 2) + 'px';
+  /* Propriedade `scale`, não transform: ver o bloco da moldura no CSS.
+     Via setProperty e como string, que é o caminho que não depende de o
+     navegador expor `scale` como campo do objeto style. */
+  m.style.setProperty('scale', String(escalaMoldura));
 
-  /* A borda só faz sentido quando SOBRA janela em volta. Numa tela que a
-     caixa preenche, viraria um fio de 1px na beirada, que lê como defeito. */
-  m.classList.toggle('comBarras', (aw < w - 1) || (ah < h - 1));
+  /* A borda só faz sentido quando SOBRA janela em volta da caixa ampliada. */
+  const sobra = (TELA_REF_W * escalaMoldura < w - 1) || (TELA_REF_H * escalaMoldura < h - 1);
+  m.classList.toggle('comBarras', sobra);
 
-  /* --vw / --vh: 1% da MOLDURA em px. Todo o CSS depende disto — ver o bloco
-     da moldura lá em cima. Escrito depois de fixar o tamanho, para clientWidth
-     já refletir a caixa nova. */
-  m.style.setProperty('--vw', (m.clientWidth  / 100) + 'px');
-  m.style.setProperty('--vh', (m.clientHeight / 100) + 'px');
+  /* --vw / --vh: 1% da moldura. Constantes agora, mas continuam sendo escritas
+     daqui para haver uma fonte só — ver o bloco da moldura no CSS. */
+  m.style.setProperty('--vw', (TELA_REF_W / 100) + 'px');
+  m.style.setProperty('--vh', (TELA_REF_H / 100) + 'px');
 
-  /* Celular deitado: a caixa é limitada pela ALTURA e fica com ~190px de
-     largura, ilegível. Melhor pedir para girar. Num computador a janela é
-     alta o bastante para a caixa sair grande, e ninguém precisa girar nada. */
+  /* Celular deitado: a caixa é limitada pela ALTURA e a ampliação fica em
+     torno de 0.5, ilegível. Melhor pedir para girar. Num computador a janela
+     é alta o bastante e ninguém precisa girar nada. */
   $('gire').classList.toggle('on', w > h && h < 560);
+}
+
+/* Resolução do canvas. A moldura tem 384x798 CSS, mas na tela ela aparece
+   ampliada por escalaMoldura — sem multiplicar aqui, um monitor grande
+   mostraria a cena de 384px esticada e borrada. O teto de DPR_TETO continua
+   valendo: é ele que segura o custo no celular. */
+function dprMoldura(){
+  return Math.min(DPR_TETO, (window.devicePixelRatio || 1) * escalaMoldura);
 }
 
 function aoRedimensionar(){
   ajustarMoldura();
   const w = telaW(), h = telaH();
-  if(renderer){ renderer.setPixelRatio(dprCena()); renderer.setSize(w, h, false); }
-  /* O FOV ainda acompanha o formato — ver fovDaTela(). Com a moldura, o
-     formato quase nunca muda, mas telas em pé mais estreitas que a referência
-     continuam existindo (painel fino do VS Code) e precisam abrir o FOV. */
+  const dpr = dprMoldura();
+  if(renderer){ renderer.setPixelRatio(dpr); renderer.setSize(w, h, false); }
+  /* O FOV ainda acompanha o formato — ver fovDaTela(). Com o tamanho fixo ele
+     dá sempre FOV_REF; a função fica porque é ela que garante isso, e não uma
+     constante espalhada. */
   if(camera){
     camera.aspect = w / h;
     camera.fov = fovDaTela();
     camera.updateProjectionMatrix();
   }
-  const dpr = dprCena();
   cvConfete.width = w * dpr; cvConfete.height = h * dpr;
   cvConfete.style.width = w + 'px'; cvConfete.style.height = h + 'px';
   pintarQuadro();
@@ -2984,11 +3040,16 @@ function mostrarFormatoDaTela(){
   const el = $('hudTela');
   if(!el) return;
   const w = telaW(), h = telaH();
+  /* A linha da MOLDURA e a do FOV têm de ser idênticas em qualquer aparelho —
+     é isso que a moldura de tamanho fixo garante. Só a linha da JANELA e a
+     ampliação mudam de máquina para máquina; elas são o que está sendo
+     absorvido, não o que resta de diferença. */
   el.innerHTML =
     'janela  ' + window.innerWidth + '&times;' + window.innerHeight +
+    ' &middot; x' + escalaMoldura.toFixed(2) +
     '<br>moldura ' + w + '&times;' + h +
     '<br>aspecto ' + (w / h).toFixed(3) + ' &middot; ref ' + ASPECT_REF +
-    '<br>fov ' + fovDaTela().toFixed(1) + '&deg; &middot; dpr ' + dprCena().toFixed(1);
+    '<br>fov ' + fovDaTela().toFixed(1) + '&deg; &middot; dpr ' + dprMoldura().toFixed(1);
 }
 
 /* -------------------- montagem / desmontagem de cenas -------------------- */
@@ -4683,23 +4744,29 @@ function ligarControlesCamLivre(){
     pincaAnterior  = abertura();
   }
 
+  /* Os ponteiros são guardados JÁ em coordenadas de moldura. Convertendo na
+     entrada, tudo o que vem depois — centroide, abertura da pinça, deltas,
+     tolerância do "segurar" — fica no mesmo sistema do resto do app, e os
+     gestos respondem igual no computador e no aparelho. */
   cv.addEventListener('pointerdown', (e)=>{
     if(!camLivre) return;
     try { cv.setPointerCapture(e.pointerId); } catch(_){}
-    ponteiros.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    const p = pontoNaMoldura(e.clientX, e.clientY);
+    ponteiros.set(e.pointerId, p);
     rearmar();
 
     /* 1 dedo parado por 3s = copiar. Com 2 dedos é pan/pinça, então cancela.
        Com Ctrl também: Ctrl+arrastar é pan, e um Ctrl+clique parado copiando
        a câmera sem querer seria uma surpresa desagradável no meio do ajuste. */
-    if(ponteiros.size === 1 && !e.ctrlKey) iniciarSegurar(e.clientX, e.clientY);
+    if(ponteiros.size === 1 && !e.ctrlKey) iniciarSegurar(p.x, p.y);
     else cancelarSegurar();
   });
 
   cv.addEventListener('pointermove', (e)=>{
     if(!camLivre || !ponteiros.has(e.pointerId)) return;
     e.preventDefault();
-    ponteiros.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    const p = pontoNaMoldura(e.clientX, e.clientY);
+    ponteiros.set(e.pointerId, p);
 
     /* Cancela o "segurar para copiar" se virou outro gesto:
        - entrou um segundo dedo (pan/pinça)
@@ -4708,7 +4775,7 @@ function ligarControlesCamLivre(){
        porque nem todo navegador entrega o pointerdown do segundo dedo. */
     if(_segOrigem){
       if(ponteiros.size > 1) cancelarSegurar();
-      else if(Math.hypot(e.clientX - _segOrigem.x, e.clientY - _segOrigem.y) > TOLERANCIA_PX) cancelarSegurar();
+      else if(Math.hypot(p.x - _segOrigem.x, p.y - _segOrigem.y) > TOLERANCIA_PX) cancelarSegurar();
     }
 
     const c = centro();
@@ -5474,23 +5541,33 @@ function montarArrastar(item, corpo){
 function ligarArrasto(chip, item){
   let arrastando = false, offX = 0, offY = 0, origem = null;
 
+  /* Tudo aqui em coordenadas de MOLDURA. getBoundingClientRect() devolve
+     janela e já com a ampliação embutida, então o canto e a largura passam
+     por pontoNaMoldura()/escalaMoldura antes de virarem style. */
   chip.addEventListener('pointerdown', (e)=>{
     if(quizRespondido) return;
     arrastando = true; origem = chip.parentElement;
     const r = chip.getBoundingClientRect();
-    offX = e.clientX - r.left; offY = e.clientY - r.top;
+    const canto = pontoNaMoldura(r.left, r.top);
+    const p = pontoNaMoldura(e.clientX, e.clientY);
+    offX = p.x - canto.x; offY = p.y - canto.y;
     chip.classList.add('arrastando');
-    chip.style.left = r.left + 'px'; chip.style.top = r.top + 'px';
-    chip.style.width = r.width + 'px';
-    document.body.appendChild(chip);
+    chip.style.left = canto.x + 'px'; chip.style.top = canto.y + 'px';
+    chip.style.width = (r.width / (escalaMoldura || 1)) + 'px';
+    /* Para dentro da MOLDURA, não para o body: fora dela o chip não seria
+       ampliado junto e encolheria de estalo no meio do arrasto. */
+    $('app').appendChild(chip);
     chip.setPointerCapture(e.pointerId);
     playSfx('click', .35);
   });
 
   chip.addEventListener('pointermove', (e)=>{
     if(!arrastando) return;
-    chip.style.left = (e.clientX - offX) + 'px';
-    chip.style.top  = (e.clientY - offY) + 'px';
+    const p = pontoNaMoldura(e.clientX, e.clientY);
+    chip.style.left = (p.x - offX) + 'px';
+    chip.style.top  = (p.y - offY) + 'px';
+    /* elementsFromPoint quer coordenadas de JANELA e sabe lidar com a
+       ampliação sozinho — este par fica sem converter, de propósito. */
     const sob = alvoSobPonteiro(e.clientX, e.clientY);
     $$('.dnd-alvo').forEach(a => a.classList.toggle('sobre', a === sob));
   });
@@ -5582,12 +5659,12 @@ function cliqueNaCena(ev){
   if(!alvos3D || quizRespondido) return;
   if(!raycaster){ raycaster = new THREE.Raycaster(); ponteiro = new THREE.Vector2(); }
 
-  /* clientX/Y são da JANELA; o canvas vive dentro da moldura. Numa janela
-     larga a moldura está deslocada para o meio, e sem descontar o retângulo
-     dela o toque cairia à direita do béquer que o aluno tocou. */
-  const r = $('app').getBoundingClientRect();
-  ponteiro.x =  ((ev.clientX - r.left) / r.width)  * 2 - 1;
-  ponteiro.y = -((ev.clientY - r.top)  / r.height) * 2 + 1;
+  /* clientX/Y são da JANELA; o canvas vive dentro da moldura, deslocada e
+     ampliada. pontoNaMoldura() desfaz as duas coisas — sem isso o toque cairia
+     longe do béquer que o aluno tocou. */
+  const p = pontoNaMoldura(ev.clientX, ev.clientY);
+  ponteiro.x =  (p.x / telaW()) * 2 - 1;
+  ponteiro.y = -(p.y / telaH()) * 2 + 1;
   raycaster.setFromCamera(ponteiro, camera);
 
   const objetos = alvos3D.mapa.map(m => m.obj);
