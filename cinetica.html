@@ -1069,7 +1069,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.27.0</div>
+  <div id="versao">v1.28.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -1156,7 +1156,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.27.0';
+const VERSAO = 'v1.28.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -4314,7 +4314,25 @@ const CAM_DUPLA   = { theta: 0.00, phi: 1.30, dist:  17.2, target:[0, 1.2, .2] }
    afastada, senão moléculas passam entre a câmera e a caixa. */
 const CAM_ARENA   = { theta: 0.00, phi: 1.30, dist: 22.1, target:[0, 2.45, 0] };
 const CAM_ARENA_P = { theta: 0.34, phi: 1.34, dist:  16, target:[0, 2.45, 0] };
-const CAM_QUADRO  = { theta: 0.00, phi: 1.44, dist:  18.1, target:[0, 3.0, -2.6] };
+/* --------------------------------------------------------------------------
+   O QUADRO como fundo — usada nas faixas que abrem o painel de gráfico e nos
+   quizzes com `camera: CAM_QUADRO`. Nessas cenas prepararQuadro() chama
+   quadroLimpar() antes, então o quadro está sem a definição: sobra o título.
+
+   Medida no aparelho depois da correção do canvas, e conferida no preview:
+
+     preview  theta 0.02  phi 1.29  dist 10.6  target [0.4, 3.2,-2.6]
+     celular  theta 0.02  phi 1.24  dist 10.5  target [0.4, 3.5,-2.7]
+
+   com o quadro em topo (-0.13, 0.64) e base (-0.12,-0.26) — contra (-0.14,
+   0.65) e (-0.12,-0.24) no preview. Fica o valor do celular.
+
+   O quadro agora é mais largo que a tela (esq -1.90, dir 1.67): sai cortado
+   dos dois lados, de propósito, porque aqui ele é FUNDO de um painel de SVG e
+   preencher o quadro é o que se quer. O que precisa continuar dentro é o
+   título, que vai de ndcX -0.84 a 0.18.
+   -------------------------------------------------------------------------- */
+const CAM_QUADRO  = { theta: 0.02, phi: 1.24, dist: 10.5, target:[0.4, 3.5, -2.7] };
 /* --------------------------------------------------------------------------
    Enquadramento da DEFINIÇÃO — o que se vê ao tocar em COMEÇAR
    --------------------------------------------------------------------------
