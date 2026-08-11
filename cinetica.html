@@ -1069,7 +1069,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
   <div id="flashBranco"></div>
 
   <!-- Selo de versão (clique = câmera livre) + HUD -->
-  <div id="versao">v1.26.0</div>
+  <div id="versao">v1.27.0</div>
   <!-- HUD da câmera livre: conteúdo fixo (título + botão), montado aqui em vez
        de ser reescrito por JS a cada gesto. -->
   <div id="hudCamera">
@@ -1156,7 +1156,7 @@ canvas#cena3d.livre:active{ cursor:grabbing; }
    REGRA CRÍTICA: ao alterar o app, suba VERSAO aqui E a constante CACHE
    no sw.js (senão o celular fica com a versão antiga).
    ========================================================================== */
-const VERSAO = 'v1.26.0';
+const VERSAO = 'v1.27.0';
 
 const CORES = {
   /* --- SEMÂNTICAS: significam alguma coisa (calor, frio, catalisador,
@@ -4349,11 +4349,31 @@ const CAM_QUADRO_DEF = { theta: 0.02, phi: 1.29, dist: 16.2, target:[1.5, -0.4, 
    as torneiras sem mover o alvo não as tira de quadro, só as afasta e encolhe.
    Enquadramento medido em celular em pé — em paisagem os rótulos A/B passam
    um pouco acima do topo da tela. */
-/* Capturada no aparelho com a câmera livre. Eu tinha trocado por um valor
-   deduzido do print (dist 8.5) e ficou pior: print é imagem, e a essa altura
-   não dava para saber se ele fora tirado com o movimento de 3 s ainda
-   correndo. Valor copiado do app ganha de leitura de imagem. */
-const CAM_TORNEIRAS = { theta: 1.47, phi: 1.33, dist: 26.0, target:[-4.1, -5.0, -5.1] };
+/* Capturada no aparelho com a câmera livre. Print é imagem: não dá para saber
+   se foi tirado com o movimento de 3 s ainda correndo. Valor copiado do app
+   ganha de leitura de imagem — sempre.
+
+   Este é o primeiro enquadramento medido DEPOIS da correção do canvas, e por
+   isso ele também é a prova de que a correção pegou. O mesmo resultado visual
+   foi obtido nas duas telas com câmeras praticamente iguais:
+
+     preview  theta 1.67  phi 1.53  dist 8.9  target [-6.5, 2.4,-1.5]
+     celular  theta 1.61  phi 1.50  dist 8.9  target [-6.2, 2.3,-1.6]
+
+   Mesma distância cravada, e os rótulos caindo em (-0.76,-0.18)/(0.79,-0.19)
+   contra (-0.75,-0.16)/(0.74,-0.16) — 0.01 a 0.05 de NDC, que é o erro de
+   casar duas telas a olho. Antes da correção o mesmo casamento exigia dist
+   23.3 contra 43.1.
+
+   Fica o valor do CELULAR, que é onde o app roda de verdade, e que ainda por
+   cima saiu um tico mais simétrico: centro dos dois rótulos em -0.005 contra
+   +0.015 do preview.
+
+   O que conferir ao mexer aqui são os RÓTULOS A e B, não o quadro: nesta
+   câmera o quadro está fora de campo, e o NDC dele explode perto da borda do
+   frustum (topo 8.61 no celular, 10.01 no preview) sem que isso signifique
+   nada sobre a composição. */
+const CAM_TORNEIRAS = { theta: 1.61, phi: 1.50, dist: 8.9, target:[-6.2, 2.3, -1.6] };
 const CAM_BUNSEN  = { theta:-0.30, phi: 1.30, dist:  8.8, target:[0, 1.2, .1] };
 const CAM_TOPO    = { theta: 0.00, phi: 0.48, dist: 21, target:[0, 1.0, 0] };
 /* Olha para a parede lateral esquerda (o "slide"). */
